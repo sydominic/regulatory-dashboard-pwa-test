@@ -77,6 +77,18 @@ async function apiPost(path, body) {
   return json;
 }
 
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function renderJobProgress(job) {
+  const p = job?.progress || {};
+  const current = job?.current || {};
+  const head = job?.status === 'done' ? '수집 완료' : job?.status === 'failed' ? '수집 실패' : '수집 진행 중';
+  const currentText = current.category ? ` / 현재: ${current.category}` : '';
+  return `${head}${currentText} / RSS ${numberFmt(p.rssChecked)}건, HTML ${numberFmt(p.htmlChecked)}건, 상세검증 ${numberFmt(p.detailChecked)}건, 후보 ${numberFmt(p.checked || p.rows || 0)}건, 신규 ${numberFmt(p.inserted)}건, 중복 ${numberFmt(p.skipped)}건`;
+}
+
 function periodDatesForClient(period, startDate, endDate) {
   const today = todayKst();
   if (period === 'today') return { startDate: today, endDate: today };
@@ -128,6 +140,7 @@ function App() {
   const [categoryItems, setCategoryItems] = useState(emptyPage(10));
   const [loading, setLoading] = useState(false);
   const [collecting, setCollecting] = useState(false);
+  const [collectJob, setCollectJob] = useState(null);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
@@ -184,22 +197,50 @@ function App() {
 
   async function collect(mode) {
     setCollecting(true);
+    setCollectJob(null);
     setError('');
     setMessage('');
     try {
       const range = periodDatesForClient(filters.period, filters.startDate, filters.endDate);
-      const data = await apiPost('/api/collect', { mode, ...range });
-      const baseMsg = `${mode === 'fast' ? '빠른수집' : '기간수집'} 결과: 신규 ${numberFmt(data.inserted)}건, 중복 ${numberFmt(data.skipped)}건, 확인 ${numberFmt(data.checked)}건, RSS 확인 ${numberFmt(data.rssChecked)}건, HTML 확인 ${numberFmt(data.htmlChecked)}건, 상세검증 ${numberFmt(data.detailChecked)}건${data.latestItemDate ? `, 수집 확인 최신일 ${data.latestItemDate}` : ''}`;
-      if (data.warning) {
-        const firstError = data.errors?.length ? ` / 첫 오류: ${data.errors[0]}` : '';
-        setError(`수집 주의: 후보 확인이 없거나 기간 내 저장 후보가 없습니다. ${baseMsg}${firstError}`);
-      } else {
-        setMessage(baseMsg);
+      const started = await apiPost('/api/collect/start', { mode, ...range });
+      setCollectJob(started);
+      setMessage(`${mode === 'fast' ? '빠른수집' : '기간수집'} 작업을 시작했습니다. 작업번호 ${started.jobId}`);
+
+      let lastJob = started;
+      const maxPolls = mode === 'fast' ? 180 : 360; // 2초 간격: 빠른수집 최대 6분, 기간수집 최대 12분
+      for (let i = 0; i < maxPolls; i += 1) {
+        await sleep(2000);
+        const job = await apiGet(`/api/collect/status/${started.jobId}`);
+        lastJob = job;
+        setCollectJob(job);
+        if (job.status === 'running' || job.status === 'queued') {
+          setMessage(renderJobProgress(job));
+        }
+        if (job.status === 'done') {
+          const data = job.result || {};
+          const baseMsg = `${mode === 'fast' ? '빠른수집' : '기간수집'} 결과: 신규 ${numberFmt(data.inserted)}건, 중복 ${numberFmt(data.skipped)}건, 확인 ${numberFmt(data.checked)}건, RSS 확인 ${numberFmt(data.rssChecked)}건, HTML 확인 ${numberFmt(data.htmlChecked)}건, 상세검증 ${numberFmt(data.detailChecked)}건${data.latestItemDate ? `, 수집 확인 최신일 ${data.latestItemDate}` : ''}${data.detailLimitReached ? `, 상세검증 제한 ${numberFmt(data.detailLimit)}건 도달` : ''}`;
+          if (data.warning) {
+            const firstError = data.errors?.length ? ` / 첫 오류: ${data.errors[0]}` : '';
+            setError(`수집 주의: 후보 확인이 없거나 기간 내 저장 후보가 없습니다. ${baseMsg}${firstError}`);
+          } else {
+            setMessage(baseMsg);
+          }
+          await loadOptions();
+          await loadData(1, 1, filters);
+          return;
+        }
+        if (job.status === 'failed') {
+          throw new Error(job.error || '수집 작업이 실패했습니다.');
+        }
       }
-      await loadOptions();
-      await loadData(1, 1, filters);
+      throw new Error(`수집 작업이 제한시간 내 완료되지 않았습니다. 마지막 상태: ${renderJobProgress(lastJob)}`);
     } catch (err) {
-      setError(`수집 실패: ${err.message}`);
+      const msg = String(err.message || err);
+      if (msg.includes('<!DOCTYPE html') || msg.includes('<title>502</title>')) {
+        setError('수집 실패: Render/API가 HTML 오류 페이지를 반환했습니다. 수집 서버 응답 문제로 보며, Render Logs를 확인해야 합니다.');
+      } else {
+        setError(`수집 실패: ${msg}`);
+      }
     } finally {
       setCollecting(false);
     }
@@ -267,7 +308,7 @@ function App() {
       {message && <div className="notice ok">{message}</div>}
       {error && <div className="notice error">{error}</div>}
       {loading && <div className="notice info">데이터를 조회하는 중입니다.</div>}
-      {collecting && <div className="notice info">식약처 게시판을 수집하는 중입니다. 기간수집은 시간이 걸릴 수 있습니다.</div>}
+      {collecting && <div className="notice info">{collectJob ? renderJobProgress(collectJob) : '식약처 게시판 수집 작업을 시작하는 중입니다.'}</div>}
 
       <section className="stat-grid desktop-only">
         <Metric title="오늘 신규" value={headerStats.today} sub="오늘 게시 기준" icon={<FileText size={19} />} />

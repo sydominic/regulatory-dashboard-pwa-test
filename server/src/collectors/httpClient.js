@@ -1,8 +1,8 @@
 import { setTimeout as delay } from 'node:timers/promises';
 
 export async function fetchText(url, options = {}) {
-  const timeoutMs = Number(options.timeoutMs || 15000);
-  const attempts = Number(options.attempts || 2);
+  const timeoutMs = Number(options.timeoutMs || 8000);
+  const attempts = Number(options.attempts || 1);
   const accept = options.accept || 'text/html,application/xhtml+xml,application/xml,text/xml,application/rss+xml,*/*;q=0.8';
   let lastError = null;
 

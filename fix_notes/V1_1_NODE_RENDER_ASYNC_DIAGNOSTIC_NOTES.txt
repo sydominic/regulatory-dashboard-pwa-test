@@ -1,0 +1,22 @@
+MFDS Regulatory PWA V1.1 - Node/Render async diagnostic
+
+Purpose
+- Resolve Render 502 / long-running collect request issue.
+- Keep UI layout, tabs, buttons, cards, and table design unchanged.
+- Rebuild only functional collection execution flow.
+
+Main changes
+1. Replaced synchronous long-running /api/collect execution with async job model.
+2. Added /api/collect/start, /api/collect/status/:jobId, /api/collect/result/:jobId.
+3. Kept /api/collect as backward-compatible fast-return endpoint.
+4. Added progress counters: RSS checked, HTML checked, detail verified, candidates, inserted, skipped.
+5. Added diagnostic endpoints: /api/diag/env, /api/diag/mfds/rss, /api/diag/mfds/html.
+6. Reduced fast collection depth to avoid Render timeout: HTML 1 page, detail limit 45.
+7. Reduced HTTP timeout/attempts for external MFDS calls.
+8. Fixed local run version check from old v17 residue to v1.1.
+
+API version
+- v1.1-node-render-async-diagnostic
+
+Commit message
+- fix: run MFDS collection as async Render job with diagnostics

@@ -1,2 +1,2 @@
-This package is a Node/React/Vite + Express + Render version.
-It intentionally contains no Python/Streamlit runtime files.
+This package is Node/React/Vite + Express for Render. No Python or Streamlit runtime files are included.
+API version: v1.1-node-render-async-diagnostic

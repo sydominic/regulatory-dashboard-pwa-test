@@ -11,6 +11,8 @@ import { createClient } from '@supabase/supabase-js';
 import ws from 'ws';
 import { BOARD_ID_LABEL_MAP, MFDS_SOURCES, boardLabel } from './collectors/mfdsSources.js';
 import { collectMfdsItems } from './collectors/mfdsCollector.js';
+import { collectRssSource } from './collectors/mfdsRssCollector.js';
+import { collectHtmlSource } from './collectors/mfdsHtmlCollector.js';
 import { addDays, compareDate, norm, normalizeMfdsUrl } from './collectors/textUtils.js';
 
 const { Pool } = pg;
@@ -50,7 +52,7 @@ const DATA_DIR = path.join(ROOT_DIR, 'data');
 const JSON_STORE_PATH = path.join(DATA_DIR, 'mfds_items_store.json');
 const JSON_META_PATH = path.join(DATA_DIR, 'mfds_meta_store.json');
 
-const API_VERSION = 'v1-node-render-mfds-collector-rebuild';
+const API_VERSION = 'v1.1-node-render-async-diagnostic';
 const PORT = Number(process.env.PORT || process.env.LOCAL_API_PORT || 8892);
 const HOST = process.env.HOST || '0.0.0.0';
 const RAW_DATABASE_URL = String(process.env.DATABASE_URL || process.env.SUPABASE_DB_URL || '').trim();
@@ -463,13 +465,33 @@ function summarize(items) {
   };
 }
 
-async function collectMfdsToDb(startDate, endDate, collectMode = 'period') {
-  const collected = await collectMfdsItems({ startDate, endDate, mode: collectMode });
+async function collectMfdsToDb(startDate, endDate, collectMode = 'period', options = {}) {
+  const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null;
+  const progress = (event, payload = {}) => {
+    if (onProgress) {
+      try { onProgress({ event, ...payload }); } catch { /* ignore */ }
+    }
+  };
+  progress('collect-start', { startDate, endDate, mode: collectMode });
+  const collected = await collectMfdsItems({
+    startDate,
+    endDate,
+    mode: collectMode,
+    onProgress: p => progress(p?.event || 'progress', p || {})
+  });
+  progress('db-start', {
+    candidates: collected.rows.length,
+    checked: collected.checked,
+    rssChecked: collected.rssChecked,
+    htmlChecked: collected.htmlChecked,
+    detailChecked: collected.detailChecked
+  });
   const { inserted, skipped } = await dbInsertItems(collected.rows);
+  progress('db-done', { inserted, skipped });
   await setMeta('last_collect_range', `${startDate}~${endDate}`);
   await setMeta('last_collect_mode', collectMode);
   await setMeta('last_collect_api_version', API_VERSION);
-  return {
+  const result = {
     inserted,
     skipped,
     checked: collected.checked,
@@ -478,9 +500,150 @@ async function collectMfdsToDb(startDate, endDate, collectMode = 'period') {
     detailChecked: collected.detailChecked,
     latestItemDate: collected.latestItemDate,
     maxPages: collected.maxPages,
+    detailLimit: collected.detailLimit,
+    detailLimitReached: Boolean(collected.detailLimitReached),
     warning: (collected.rssChecked + collected.htmlChecked) === 0 || collected.checked === 0,
     boardResults: collected.boardResults,
     errors: collected.errors
+  };
+  progress('collect-complete', result);
+  return result;
+}
+
+
+const collectJobs = new Map();
+const JOB_TTL_MS = 60 * 60 * 1000;
+
+function purgeOldJobs() {
+  const now = Date.now();
+  for (const [id, job] of collectJobs.entries()) {
+    if (now - (job.updatedAt || job.createdAt || now) > JOB_TTL_MS) collectJobs.delete(id);
+  }
+}
+
+function makeJobId() {
+  return crypto.randomBytes(8).toString('hex');
+}
+
+function compactJob(job) {
+  return {
+    jobId: job.jobId,
+    ok: job.ok,
+    status: job.status,
+    mode: job.mode,
+    startDate: job.startDate,
+    endDate: job.endDate,
+    createdAt: job.createdAtKst,
+    updatedAt: job.updatedAtKst,
+    finishedAt: job.finishedAtKst || null,
+    progress: job.progress,
+    current: job.current,
+    logs: job.logs.slice(-30),
+    result: job.result,
+    error: job.error
+  };
+}
+
+function pushJobLog(job, message) {
+  const line = `${kstNowString()} ${message}`;
+  job.logs.push(line);
+  if (job.logs.length > 200) job.logs = job.logs.slice(-200);
+}
+
+function updateJobFromProgress(job, p = {}) {
+  job.updatedAt = Date.now();
+  job.updatedAtKst = kstNowString();
+  job.current = {
+    event: p.event || job.current?.event || '',
+    board_id: p.board_id || job.current?.board_id || '',
+    category: p.category || job.current?.category || '',
+    message: p.message || ''
+  };
+  for (const key of ['rssChecked', 'htmlChecked', 'detailChecked', 'rows', 'candidates', 'inserted', 'skipped', 'checked']) {
+    if (p[key] !== undefined && p[key] !== null) job.progress[key] = Number(p[key] || 0);
+  }
+  if (p.board) {
+    const idx = job.progress.boardResults.findIndex(x => x.board_id === p.board.board_id);
+    if (idx >= 0) job.progress.boardResults[idx] = p.board;
+    else job.progress.boardResults.push(p.board);
+  }
+  if (p.event) pushJobLog(job, `[${p.event}] ${p.category || p.board_id || ''}`.trim());
+}
+
+function createCollectJob({ mode, startDate, endDate }) {
+  purgeOldJobs();
+  const jobId = makeJobId();
+  const nowKst = kstNowString();
+  const job = {
+    jobId,
+    ok: true,
+    status: 'queued',
+    mode,
+    startDate,
+    endDate,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    createdAtKst: nowKst,
+    updatedAtKst: nowKst,
+    finishedAtKst: null,
+    current: { event: 'queued', board_id: '', category: '', message: '수집 대기 중' },
+    progress: {
+      rssChecked: 0,
+      htmlChecked: 0,
+      detailChecked: 0,
+      rows: 0,
+      candidates: 0,
+      checked: 0,
+      inserted: 0,
+      skipped: 0,
+      boardResults: []
+    },
+    result: null,
+    error: null,
+    logs: []
+  };
+  pushJobLog(job, `job created mode=${mode} range=${startDate}~${endDate}`);
+  collectJobs.set(jobId, job);
+  setImmediate(() => runCollectJob(jobId));
+  return job;
+}
+
+async function runCollectJob(jobId) {
+  const job = collectJobs.get(jobId);
+  if (!job) return;
+  job.status = 'running';
+  updateJobFromProgress(job, { event: 'running', message: '수집 시작' });
+  console.log(`[collect-job ${jobId}] start mode=${job.mode} range=${job.startDate}~${job.endDate}`);
+  try {
+    const result = await collectMfdsToDb(job.startDate, job.endDate, job.mode, {
+      onProgress: p => updateJobFromProgress(job, p)
+    });
+    const lastCollected = await dbLastCollected();
+    job.result = { ok: true, mode: job.mode, startDate: job.startDate, endDate: job.endDate, ...result, lastCollected };
+    job.progress.inserted = Number(result.inserted || 0);
+    job.progress.skipped = Number(result.skipped || 0);
+    job.progress.checked = Number(result.checked || 0);
+    job.status = 'done';
+    job.finishedAtKst = kstNowString();
+    updateJobFromProgress(job, { event: 'done', inserted: result.inserted, skipped: result.skipped, checked: result.checked, message: '수집 완료' });
+    console.log(`[collect-job ${jobId}] done inserted=${result.inserted} skipped=${result.skipped} checked=${result.checked}`);
+  } catch (err) {
+    job.status = 'failed';
+    job.ok = false;
+    job.error = String(err?.message || err).slice(0, 1500);
+    job.finishedAtKst = kstNowString();
+    updateJobFromProgress(job, { event: 'failed', message: job.error });
+    console.error(`[collect-job ${jobId}] failed`, err);
+  }
+}
+
+function rangeFromBody(body = {}) {
+  const mode = body.mode === 'fast' ? 'fast' : 'period';
+  const today = getTodayKst();
+  return {
+    mode,
+    startDate: body.startDate || addDays(today, -7),
+    endDate: body.endDate || today
   };
 }
 
@@ -502,7 +665,7 @@ app.get('/api/health', (_req, res) => {
     ok: true,
     service: 'mfds-regulatory-pwa-api',
     apiVersion: API_VERSION,
-    collector: 'rss-first-html-fallback-detail-verify',
+    collector: 'async-job-rss-html-detail-diagnostic',
     dbMode: mode,
     databaseConfigured: Boolean(DATABASE_URL || USE_SUPABASE_REST),
     databaseUrlStatus: DATABASE_URL_STATUS.reason,
@@ -515,6 +678,52 @@ app.get('/api/health', (_req, res) => {
     today: getTodayKst(),
     sources: MFDS_SOURCES.length
   });
+});
+
+app.get('/api/diag/env', (_req, res) => {
+  res.json({
+    ok: true,
+    apiVersion: API_VERSION,
+    dbMode: dbMode(),
+    databaseConfigured: Boolean(DATABASE_URL || USE_SUPABASE_REST),
+    databaseUrlStatus: DATABASE_URL_STATUS.reason,
+    supabaseRestConfigured: Boolean(USE_SUPABASE_REST),
+    supabaseRestStatus: SUPABASE_REST_STATUS.reason,
+    hasSupabaseUrl: Boolean(RAW_SUPABASE_URL),
+    hasSupabaseKey: Boolean(RAW_SUPABASE_KEY),
+    nodeVersion: process.version,
+    today: getTodayKst(),
+    sources: MFDS_SOURCES.length
+  });
+});
+
+app.get('/api/diag/mfds/rss', async (req, res, next) => {
+  try {
+    const boardId = String(req.query.board || 'm_1060');
+    const source = MFDS_SOURCES.find(x => x.board_id === boardId) || MFDS_SOURCES[0];
+    const today = getTodayKst();
+    const startDate = String(req.query.startDate || addDays(today, -14));
+    const endDate = String(req.query.endDate || today);
+    const result = await collectRssSource(source, startDate, endDate);
+    res.json({ ok: true, board_id: source.board_id, category: source.category, startDate, endDate, stats: result.stats, count: result.rows.length, sample: result.rows.slice(0, 5), errors: result.errors.slice(0, 10) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.get('/api/diag/mfds/html', async (req, res, next) => {
+  try {
+    const boardId = String(req.query.board || 'm_1060');
+    const source = MFDS_SOURCES.find(x => x.board_id === boardId) || MFDS_SOURCES[0];
+    const today = getTodayKst();
+    const startDate = String(req.query.startDate || addDays(today, -14));
+    const endDate = String(req.query.endDate || today);
+    const maxPages = Math.max(1, Math.min(3, Number(req.query.maxPages || 1)));
+    const result = await collectHtmlSource(source, startDate, endDate, { maxPages });
+    res.json({ ok: true, board_id: source.board_id, category: source.category, startDate, endDate, maxPages, stats: result.stats, count: result.rows.length, sample: result.rows.slice(0, 5), errors: result.errors.slice(0, 10) });
+  } catch (err) {
+    next(err);
+  }
 });
 
 app.get('/api/options', async (_req, res, next) => {
@@ -556,15 +765,37 @@ app.get('/api/items', async (req, res, next) => {
   }
 });
 
+app.post('/api/collect/start', async (req, res, next) => {
+  try {
+    await initDb();
+    const range = rangeFromBody(req.body || {});
+    const job = createCollectJob(range);
+    res.status(202).json({ ok: true, started: true, ...compactJob(job) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.get('/api/collect/status/:jobId', (req, res) => {
+  const job = collectJobs.get(req.params.jobId);
+  if (!job) return res.status(404).json({ ok: false, error: '수집 작업을 찾을 수 없습니다.' });
+  res.json(compactJob(job));
+});
+
+app.get('/api/collect/result/:jobId', (req, res) => {
+  const job = collectJobs.get(req.params.jobId);
+  if (!job) return res.status(404).json({ ok: false, error: '수집 작업을 찾을 수 없습니다.' });
+  if (job.status !== 'done') return res.status(job.status === 'failed' ? 500 : 202).json(compactJob(job));
+  res.json({ ok: true, ...job.result, job: compactJob(job) });
+});
+
+// Backward compatible endpoint: do not run the long collector inside this request.
 app.post('/api/collect', async (req, res, next) => {
   try {
-    const body = req.body || {};
-    const mode = body.mode === 'fast' ? 'fast' : 'period';
-    const today = getTodayKst();
-    const startDate = body.startDate || addDays(today, -7);
-    const endDate = body.endDate || today;
-    const result = await collectMfdsToDb(startDate, endDate, mode);
-    res.json({ ok: true, mode, startDate, endDate, ...result, lastCollected: await dbLastCollected() });
+    await initDb();
+    const range = rangeFromBody(req.body || {});
+    const job = createCollectJob(range);
+    res.status(202).json({ ok: true, started: true, async: true, ...compactJob(job) });
   } catch (err) {
     next(err);
   }
@@ -590,7 +821,7 @@ app.use((err, _req, res, _next) => {
 app.listen(PORT, HOST, async () => {
   console.log(`MFDS Regulatory PWA API listening on http://${HOST}:${PORT}`);
   console.log(`API version: ${API_VERSION}`);
-  console.log(`Collector: rss-first-html-fallback-detail-verify`);
+  console.log(`Collector: async-job-rss-html-detail-diagnostic`);
   console.log(`Database configured: ${Boolean(DATABASE_URL || USE_SUPABASE_REST)} (${dbMode()})`);
   console.log(`DATABASE_URL status: ${DATABASE_URL_STATUS.reason}`);
   console.log(`Supabase REST status: ${SUPABASE_REST_STATUS.reason}`);

@@ -7,12 +7,12 @@ import { politeDelay } from './httpClient.js';
 
 function maxPagesFor(mode, startDate, endDate) {
   const days = Math.max(1, Math.floor((new Date(`${endDate}T00:00:00Z`) - new Date(`${startDate}T00:00:00Z`)) / 86400000) + 1);
-  if (mode === 'fast') return 3;
-  if (days <= 14) return 5;
-  if (days <= 31) return 10;
-  if (days <= 90) return 20;
-  if (days <= 180) return 35;
-  return 60;
+  if (mode === 'fast') return 1;
+  if (days <= 14) return 3;
+  if (days <= 31) return 5;
+  if (days <= 90) return 8;
+  if (days <= 180) return 12;
+  return 20;
 }
 
 function mergeCandidates(candidates) {
@@ -56,8 +56,15 @@ function buildEmptyBoardResult(source) {
   };
 }
 
-export async function collectMfdsItems({ startDate, endDate, mode = 'period', sources = MFDS_SOURCES } = {}) {
+export async function collectMfdsItems({ startDate, endDate, mode = 'period', sources = MFDS_SOURCES, onProgress = null } = {}) {
   const maxPages = maxPagesFor(mode, startDate, endDate);
+  const detailLimit = mode === 'fast' ? 45 : 140;
+  let detailLimitReached = false;
+  const progress = (event, payload = {}) => {
+    if (typeof onProgress === 'function') {
+      try { onProgress({ event, ...payload }); } catch { /* ignore progress callback errors */ }
+    }
+  };
   const rows = [];
   const errors = [];
   const boardResults = [];
@@ -68,16 +75,20 @@ export async function collectMfdsItems({ startDate, endDate, mode = 'period', so
 
   for (const source of sources) {
     const board = buildEmptyBoardResult(source);
+    progress('board-start', { board_id: source.board_id, category: boardLabel(source.board_id), rssChecked, htmlChecked, detailChecked, rows: rows.length });
     const boardCandidates = [];
 
+    progress('rss-start', { board_id: source.board_id, category: boardLabel(source.board_id) });
     const rss = await collectRssSource(source, startDate, endDate);
     boardCandidates.push(...rss.rows);
     board.rssChecked = rss.stats.checked || 0;
     board.rssInRange = rss.stats.inRange || 0;
     board.errors.push(...rss.errors.slice(0, 3));
     rssChecked += board.rssChecked;
+    progress('rss-done', { board_id: source.board_id, category: boardLabel(source.board_id), board, rssChecked, htmlChecked, detailChecked, rows: rows.length });
 
     // 빠른수집도 HTML 1~3페이지를 보조로 본다. 기간수집은 HTML을 주 경로로 더 깊게 본다.
+    progress('html-start', { board_id: source.board_id, category: boardLabel(source.board_id), maxPages });
     const html = await collectHtmlSource(source, startDate, endDate, { maxPages });
     boardCandidates.push(...html.rows);
     board.htmlChecked = html.stats.checked || 0;
@@ -85,6 +96,7 @@ export async function collectMfdsItems({ startDate, endDate, mode = 'period', so
     board.htmlPages = html.stats.pages || 0;
     board.errors.push(...html.errors.slice(0, 3));
     htmlChecked += board.htmlChecked;
+    progress('html-done', { board_id: source.board_id, category: boardLabel(source.board_id), board, rssChecked, htmlChecked, detailChecked, rows: rows.length });
 
     const uniqueCandidates = mergeCandidates(boardCandidates);
     board.candidates = uniqueCandidates.length;
@@ -92,9 +104,15 @@ export async function collectMfdsItems({ startDate, endDate, mode = 'period', so
     for (const candidate of uniqueCandidates) {
       // 후보 날짜가 기간 밖이면 상세페이지 검증 전에는 제외하되, 날짜가 없는 후보는 상세 검증한다.
       if (candidate.item_date && !dateInRange(candidate.item_date, startDate, endDate)) continue;
+      if (detailChecked >= detailLimit) {
+        detailLimitReached = true;
+        board.errors.push(`detail limit reached (${detailLimit})`);
+        break;
+      }
       const verified = await verifyDetail(candidate);
       detailChecked += 1;
       board.detailChecked += 1;
+      if (detailChecked % 10 === 0) progress('detail-progress', { board_id: source.board_id, category: boardLabel(source.board_id), rssChecked, htmlChecked, detailChecked, rows: rows.length });
       if (verified.error) {
         board.detailErrors += 1;
         board.errors.push(verified.error);
@@ -118,6 +136,11 @@ export async function collectMfdsItems({ startDate, endDate, mode = 'period', so
     board.errors = [...new Set(board.errors)].slice(0, 6);
     errors.push(...board.errors);
     boardResults.push(board);
+    progress('board-done', { board_id: source.board_id, category: boardLabel(source.board_id), board, rssChecked, htmlChecked, detailChecked, rows: rows.length });
+    if (detailLimitReached) {
+      progress('detail-limit-stop', { detailLimit, rssChecked, htmlChecked, detailChecked, rows: rows.length });
+      break;
+    }
     await politeDelay(120);
   }
 
@@ -131,6 +154,8 @@ export async function collectMfdsItems({ startDate, endDate, mode = 'period', so
     detailChecked,
     checked: deduped.length,
     latestItemDate,
-    maxPages
+    maxPages,
+    detailLimit,
+    detailLimitReached
   };
 }

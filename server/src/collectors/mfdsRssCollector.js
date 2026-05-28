@@ -24,7 +24,7 @@ export async function collectRssSource(source, startDate, endDate) {
   let finalUrl = '';
   for (const url of rssUrls(source.rssBrdId)) {
     try {
-      const fetched = await fetchText(url, { accept: 'application/rss+xml,application/xml,text/xml,*/*;q=0.8', timeoutMs: 15000, attempts: 2 });
+      const fetched = await fetchText(url, { accept: 'application/rss+xml,application/xml,text/xml,*/*;q=0.8', timeoutMs: 7000, attempts: 1 });
       if (!/<item[\s>]/i.test(fetched.text)) {
         throw new Error('RSS item 태그를 찾지 못함');
       }
