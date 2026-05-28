@@ -1,0 +1,16 @@
+V1 Node/Render collector rebuild
+
+Scope
+- 기존 화면 레이아웃, 버튼, 탭, 게시판 카드 구성은 유지.
+- 수집 기능만 제로베이스로 재작성.
+- Python/Streamlit 파일 또는 실행 구조는 사용하지 않음.
+
+Collector design
+- Fast collection: MFDS official RSS first + HTML list fallback + detail-page registration-date verification.
+- Period collection: HTML page traversal first + detail-page verification; RSS is used as supplementary latest feed where available.
+- Deduplication: board_id + normalized detail URL first; fallback to category/date/title.
+- Diagnostics: RSS checked, HTML checked, detail checked, latest item date, board-level errors.
+- Zero-candidate collection is reported as warning rather than silent success.
+
+API version
+- v1-node-render-mfds-collector-rebuild

@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: mfds-regulatory-pwa
+    env: node
+    plan: free
+    buildCommand: bash render-build.sh
+    startCommand: node server/src/index.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: 20.11.1
+      - key: DATABASE_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: AUTO_COLLECT_ON_LOAD
+        value: "false"

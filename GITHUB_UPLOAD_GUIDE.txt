@@ -1,0 +1,28 @@
+MFDS Regulatory PWA v18 GitHub 업로드 안내
+
+업로드 위치:
+- GitHub repository 루트
+
+업로드해야 하는 주요 항목:
+- client/
+- server/
+- data/
+- docs/
+- scripts/
+- fix_notes/
+- package.json
+- render-build.sh
+- render.yaml
+- .env.example
+- .env.render.example
+
+업로드 금지:
+- .env
+- node_modules/
+- client/node_modules/
+- server/node_modules/
+- client/dist/
+- *.log
+
+권장 커밋 메시지:
+chore: prepare MFDS regulatory PWA for Render deployment

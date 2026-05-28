@@ -1,0 +1,2 @@
+This package is a Node/React/Vite + Express + Render version.
+It intentionally contains no Python/Streamlit runtime files.

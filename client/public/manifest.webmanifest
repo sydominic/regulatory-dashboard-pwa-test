@@ -1,0 +1,10 @@
+{
+  "name": "식약처 공식자료 대시보드",
+  "short_name": "MFDS 자료",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#F4F7FC",
+  "theme_color": "#071A3D",
+  "icons": []
+}
