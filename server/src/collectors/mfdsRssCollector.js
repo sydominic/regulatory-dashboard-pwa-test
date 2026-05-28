@@ -4,9 +4,10 @@ import { dateInRange, isBadTitle, norm, normalizeMfdsUrl, parseDateAny, parseRss
 
 function rssUrls(brdId) {
   if (!brdId) return [];
+  // MFDS official RSS list publishes http URLs. Try http first, then https fallback.
   return [
-    `https://www.mfds.go.kr/www/rss/brd.do?brdId=${encodeURIComponent(brdId)}`,
-    `http://www.mfds.go.kr/www/rss/brd.do?brdId=${encodeURIComponent(brdId)}`
+    `http://www.mfds.go.kr/www/rss/brd.do?brdId=${encodeURIComponent(brdId)}`,
+    `https://www.mfds.go.kr/www/rss/brd.do?brdId=${encodeURIComponent(brdId)}`
   ];
 }
 
@@ -14,19 +15,41 @@ function textOf($, el, selector) {
   return norm($(el).find(selector).first().text());
 }
 
+function rssSnippet(text) {
+  return norm(String(text || '').replace(/<[^>]+>/g, ' ')).slice(0, 300);
+}
+
 export async function collectRssSource(source, startDate, endDate) {
   const rows = [];
   const errors = [];
-  const stats = { source: 'rss', checked: 0, inRange: 0, feedUrl: null };
+  const stats = {
+    source: 'rss',
+    checked: 0,
+    inRange: 0,
+    feedUrl: null,
+    triedUrls: [],
+    lastStatus: null,
+    lastContentType: '',
+    bodyLength: 0,
+    itemTagCount: 0,
+    snippet: ''
+  };
   if (!source.rssBrdId) return { rows, errors, stats };
 
   let xml = '';
   let finalUrl = '';
   for (const url of rssUrls(source.rssBrdId)) {
+    stats.triedUrls.push(url);
     try {
-      const fetched = await fetchText(url, { accept: 'application/rss+xml,application/xml,text/xml,*/*;q=0.8', timeoutMs: 7000, attempts: 1 });
-      if (!/<item[\s>]/i.test(fetched.text)) {
-        throw new Error('RSS item 태그를 찾지 못함');
+      const fetched = await fetchText(url, { accept: 'application/rss+xml,application/xml,text/xml,text/html,*/*;q=0.8', timeoutMs: 7000, attempts: 1 });
+      stats.lastStatus = fetched.status || null;
+      stats.lastContentType = fetched.contentType || '';
+      stats.bodyLength = fetched.text.length;
+      stats.snippet = rssSnippet(fetched.text);
+      const itemCount = (fetched.text.match(/<item[\s>]/gi) || []).length;
+      stats.itemTagCount = itemCount;
+      if (!itemCount) {
+        throw new Error(`RSS item 태그 0개 bodyLength=${fetched.text.length} contentType=${stats.lastContentType}`);
       }
       xml = fetched.text;
       finalUrl = fetched.finalUrl || url;

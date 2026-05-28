@@ -86,7 +86,7 @@ function renderJobProgress(job) {
   const current = job?.current || {};
   const head = job?.status === 'done' ? '수집 완료' : job?.status === 'failed' ? '수집 실패' : '수집 진행 중';
   const currentText = current.category ? ` / 현재: ${current.category}` : '';
-  return `${head}${currentText} / RSS ${numberFmt(p.rssChecked)}건, HTML ${numberFmt(p.htmlChecked)}건, 상세검증 ${numberFmt(p.detailChecked)}건, 후보 ${numberFmt(p.checked || p.rows || 0)}건, 신규 ${numberFmt(p.inserted)}건, 중복 ${numberFmt(p.skipped)}건`;
+  return `${head}${currentText} / RSS ${numberFmt(p.rssChecked)}건, HTML ${numberFmt(p.htmlChecked)}건, 상세검증 ${numberFmt(p.detailChecked)}건, 후보 ${numberFmt(p.candidates || p.checked || p.rows || 0)}건, 신규 ${numberFmt(p.inserted)}건, 중복 ${numberFmt(p.skipped)}건`;
 }
 
 function periodDatesForClient(period, startDate, endDate) {

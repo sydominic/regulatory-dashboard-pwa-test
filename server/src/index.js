@@ -52,7 +52,7 @@ const DATA_DIR = path.join(ROOT_DIR, 'data');
 const JSON_STORE_PATH = path.join(DATA_DIR, 'mfds_items_store.json');
 const JSON_META_PATH = path.join(DATA_DIR, 'mfds_meta_store.json');
 
-const API_VERSION = 'v1.1-node-render-async-diagnostic';
+const API_VERSION = 'v1.2-node-render-mfds-parser-diagnostic';
 const PORT = Number(process.env.PORT || process.env.LOCAL_API_PORT || 8892);
 const HOST = process.env.HOST || '0.0.0.0';
 const RAW_DATABASE_URL = String(process.env.DATABASE_URL || process.env.SUPABASE_DB_URL || '').trim();
@@ -665,7 +665,7 @@ app.get('/api/health', (_req, res) => {
     ok: true,
     service: 'mfds-regulatory-pwa-api',
     apiVersion: API_VERSION,
-    collector: 'async-job-rss-html-detail-diagnostic',
+    collector: 'async-job-rss-html-link-block-parser-diagnostic',
     dbMode: mode,
     databaseConfigured: Boolean(DATABASE_URL || USE_SUPABASE_REST),
     databaseUrlStatus: DATABASE_URL_STATUS.reason,
@@ -777,12 +777,16 @@ app.post('/api/collect/start', async (req, res, next) => {
 });
 
 app.get('/api/collect/status/:jobId', (req, res) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
   const job = collectJobs.get(req.params.jobId);
   if (!job) return res.status(404).json({ ok: false, error: '수집 작업을 찾을 수 없습니다.' });
   res.json(compactJob(job));
 });
 
 app.get('/api/collect/result/:jobId', (req, res) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   const job = collectJobs.get(req.params.jobId);
   if (!job) return res.status(404).json({ ok: false, error: '수집 작업을 찾을 수 없습니다.' });
   if (job.status !== 'done') return res.status(job.status === 'failed' ? 500 : 202).json(compactJob(job));
@@ -821,7 +825,7 @@ app.use((err, _req, res, _next) => {
 app.listen(PORT, HOST, async () => {
   console.log(`MFDS Regulatory PWA API listening on http://${HOST}:${PORT}`);
   console.log(`API version: ${API_VERSION}`);
-  console.log(`Collector: async-job-rss-html-detail-diagnostic`);
+  console.log(`Collector: async-job-rss-html-link-block-parser-diagnostic`);
   console.log(`Database configured: ${Boolean(DATABASE_URL || USE_SUPABASE_REST)} (${dbMode()})`);
   console.log(`DATABASE_URL status: ${DATABASE_URL_STATUS.reason}`);
   console.log(`Supabase REST status: ${SUPABASE_REST_STATUS.reason}`);

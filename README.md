@@ -34,7 +34,7 @@ supabase_schema.sql
 Expected API version:
 
 ```text
-v1.1-node-render-async-diagnostic
+v1.2-node-render-mfds-parser-diagnostic
 ```
 
 ## Diagnostic API

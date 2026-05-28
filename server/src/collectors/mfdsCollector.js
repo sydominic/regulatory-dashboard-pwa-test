@@ -52,6 +52,8 @@ function buildEmptyBoardResult(source) {
     candidates: 0,
     count: 0,
     latestDate: null,
+    rssDiag: {},
+    htmlDiag: {},
     errors: []
   };
 }
@@ -83,6 +85,14 @@ export async function collectMfdsItems({ startDate, endDate, mode = 'period', so
     boardCandidates.push(...rss.rows);
     board.rssChecked = rss.stats.checked || 0;
     board.rssInRange = rss.stats.inRange || 0;
+    board.rssDiag = {
+      itemTagCount: rss.stats.itemTagCount || 0,
+      bodyLength: rss.stats.bodyLength || 0,
+      contentType: rss.stats.lastContentType || '',
+      feedUrl: rss.stats.feedUrl || null,
+      triedUrls: rss.stats.triedUrls || [],
+      snippet: rss.stats.snippet || ''
+    };
     board.errors.push(...rss.errors.slice(0, 3));
     rssChecked += board.rssChecked;
     progress('rss-done', { board_id: source.board_id, category: boardLabel(source.board_id), board, rssChecked, htmlChecked, detailChecked, rows: rows.length });
@@ -94,12 +104,24 @@ export async function collectMfdsItems({ startDate, endDate, mode = 'period', so
     board.htmlChecked = html.stats.checked || 0;
     board.htmlInRange = html.stats.inRange || 0;
     board.htmlPages = html.stats.pages || 0;
+    board.htmlDiag = {
+      bodyLength: html.stats.bodyLength || 0,
+      anchorTotal: html.stats.anchorTotal || 0,
+      viewLinkCandidates: html.stats.viewLinkCandidates || 0,
+      textBlockCandidates: html.stats.textBlockCandidates || 0,
+      noDateCandidates: html.stats.noDateCandidates || 0,
+      dateTokens: html.stats.dateTokens || 0,
+      outOfRange: html.stats.outOfRange || 0,
+      contentType: html.stats.lastContentType || '',
+      sampleTitles: html.stats.sampleTitles || []
+    };
     board.errors.push(...html.errors.slice(0, 3));
     htmlChecked += board.htmlChecked;
     progress('html-done', { board_id: source.board_id, category: boardLabel(source.board_id), board, rssChecked, htmlChecked, detailChecked, rows: rows.length });
 
     const uniqueCandidates = mergeCandidates(boardCandidates);
     board.candidates = uniqueCandidates.length;
+    progress('candidates-done', { board_id: source.board_id, category: boardLabel(source.board_id), board, candidates: board.candidates, rssChecked, htmlChecked, detailChecked, rows: rows.length });
 
     for (const candidate of uniqueCandidates) {
       // 후보 날짜가 기간 밖이면 상세페이지 검증 전에는 제외하되, 날짜가 없는 후보는 상세 검증한다.

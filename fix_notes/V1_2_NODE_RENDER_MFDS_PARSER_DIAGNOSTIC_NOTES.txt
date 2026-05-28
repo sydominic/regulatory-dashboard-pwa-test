@@ -1,0 +1,28 @@
+# v1.2 Node Render MFDS Parser Diagnostic
+
+목적
+- v1.1에서 Render 502/동기 처리 문제는 소거되었으나 RSS/HTML 후보가 0건으로 끝난 문제를 추적한다.
+- UI/레이아웃/탭/버튼은 유지하고 수집 후보 추출 조건과 진단값만 개선한다.
+
+핵심 수정
+1. HTML 후보 추출 조건 완화
+   - /view.do 뿐 아니라 view.do, ./view.do, seq=... 형태를 모두 후보로 인정한다.
+   - href가 javascript이거나 onclick/data 속성에 seq가 있는 경우도 상세 URL을 구성한다.
+   - anchor 기준 후보 추출 실패 시 li/tr/list item 텍스트 블록 기준으로 제목+날짜 후보를 재추출한다.
+
+2. RSS 진단 강화
+   - 공식 RSS 안내 기준에 맞춰 http RSS URL을 먼저 시도하고 https를 fallback으로 시도한다.
+   - RSS 응답의 body length, content-type, item 태그 수, snippet을 boardResults에 남긴다.
+
+3. HTML 진단 강화
+   - bodyLength, anchorTotal, viewLinkCandidates, textBlockCandidates, dateTokens, sampleTitles를 boardResults에 남긴다.
+   - 수집 0건인 경우 접속 실패인지, 후보 조건 미스인지 구분할 수 있게 한다.
+
+4. status API 캐시 방지
+   - /api/collect/status/:jobId와 /api/collect/result/:jobId에 Cache-Control: no-store를 적용한다.
+
+확인 기준
+- /api/health apiVersion = v1.2-node-render-mfds-parser-diagnostic
+- 빠른수집 후 RSS/HTML 후보가 0건이면 boardResults의 rssDiag/htmlDiag로 원인을 본다.
+- 특히 htmlDiag.anchorTotal > 0인데 viewLinkCandidates/textBlockCandidates가 0이면 selector/후보조건 문제다.
+- htmlDiag.sampleTitles에 식약처 최신 제목이 보이면 HTML 접속과 제목 감지는 성공이다.
