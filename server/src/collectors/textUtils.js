@@ -6,6 +6,15 @@ export function norm(value) {
     .trim();
 }
 
+// Compare board/category labels robustly. MFDS sometimes renders category labels with
+// spaces or punctuation differences, e.g. "학술토론회" vs "학술 토론회", "전문홍보물" vs "전문 홍보물".
+// Do NOT use this for normal free-text matching; it is only for exact label equivalence.
+export function compactLabel(value) {
+  return norm(value)
+    .replace(/[\s\u00a0·ㆍ・,，.。:：;；/\\|_\-–—()\[\]{}<>《》「」『』"'‘’“”]+/g, '')
+    .toLowerCase();
+}
+
 export function compareDate(a, b) {
   return String(a || '').localeCompare(String(b || ''));
 }
@@ -87,9 +96,28 @@ export function normalizeMfdsUrl(rawUrl, baseUrl = 'https://www.mfds.go.kr/') {
   }
 }
 
+const BOARD_LABEL_EQUIVALENTS = [
+  '공지', '공고', '보도자료', '민원인안내서', '공무원지침서', '제개정고시등',
+  '법, 시행령, 시행규칙', '법, 시행령, 시험규칙', '고시전문', '훈령전문', '예규전문',
+  '입법/행정예고', '안내서/지침', '안내서 지침', '안내서및지침',
+  '학술토론회', '학술 토론회', '학술토론',
+  '전문홍보물', '전문 홍보물'
+];
+
+const BOARD_LABEL_COMPACT_SET = new Set(BOARD_LABEL_EQUIVALENTS.map(compactLabel));
+
+export function isBoardLabelTitle(title, category = '') {
+  const c = compactLabel(title);
+  if (!c) return false;
+  if (BOARD_LABEL_COMPACT_SET.has(c)) return true;
+  if (category && c === compactLabel(category)) return true;
+  return false;
+}
+
 export function isBadTitle(title) {
   const t = norm(title);
   if (!t || t.length < 3) return true;
+  if (isBoardLabelTitle(t)) return true;
   const badExact = new Set([
     '로그인', '회원가입', '검색', '이전', '다음', '처음', '마지막', '더보기', '목록', '메뉴',
     '본문 바로가기', '전체 메뉴', 'RSS', '누리집 안내지도', '전체메뉴', '바로가기', '펼치기',

@@ -1,8 +1,9 @@
--- v1.7 잘못 수집된 제목 오인식 자료 정리용 SQL
--- 목적: 검색 UI/오류 페이지 문구가 제목으로 저장된 행 삭제 후 v1.7 로컬수집기로 재수집
+-- v1.9 잘못 수집된 제목 오인식 자료 정리용 SQL
+-- 목적: 검색 UI/게시판명/오류화면 문구가 제목으로 저장된 행 삭제 후 v1.9 로컬수집기로 재수집
+-- 주의: 정상 제목 안에 '검색', '도움말', '서비스'가 일부 포함된 경우를 지우지 않도록 기본은 완전일치 위주입니다.
 
 -- 1) 백업: 먼저 1회 실행
-create table if not exists items_backup_before_v17_cleanup as
+create table if not exists items_backup_before_v19_cleanup as
 select *
 from items;
 
@@ -37,13 +38,15 @@ where item_date >= '2026-05-23'
       '민원인안내서',
       '제개정고시등',
       '안내서/지침',
+      '안내서 지침',
       '학술토론회',
-      '전문홍보물'
+      '학술 토론회',
+      '전문홍보물',
+      '전문 홍보물'
     )
     or title = category
-    or title like '%검색도움말%'
-    or title like '%검색연산자%'
-    or title like '%일시적으로 서비스를 이용할 수 없습니다%'
+    or regexp_replace(title, '[[:space:]·ㆍ・,，.。:：;；/\\|_\-–—()\[\]{}<>《》「」『』"''‘’“”]+', '', 'g')
+       = regexp_replace(category, '[[:space:]·ㆍ・,，.。:：;；/\\|_\-–—()\[\]{}<>《》「」『』"''‘’“”]+', '', 'g')
     or url is null
     or url = ''
     or lower(url) like '%/list.do%'
@@ -73,13 +76,15 @@ order by item_date desc, category, title;
 --       '민원인안내서',
 --       '제개정고시등',
 --       '안내서/지침',
+--       '안내서 지침',
 --       '학술토론회',
---       '전문홍보물'
+--       '학술 토론회',
+--       '전문홍보물',
+--       '전문 홍보물'
 --     )
 --     or title = category
---     or title like '%검색도움말%'
---     or title like '%검색연산자%'
---     or title like '%일시적으로 서비스를 이용할 수 없습니다%'
+--     or regexp_replace(title, '[[:space:]·ㆍ・,，.。:：;；/\\|_\-–—()\[\]{}<>《》「」『』"''‘’“”]+', '', 'g')
+--        = regexp_replace(category, '[[:space:]·ㆍ・,，.。:：;；/\\|_\-–—()\[\]{}<>《》「」『』"''‘’“”]+', '', 'g')
 --     or url is null
 --     or url = ''
 --     or lower(url) like '%/list.do%'

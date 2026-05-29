@@ -4,13 +4,13 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { collectMfdsItems } from '../server/src/collectors/mfdsCollector.js';
 import { MFDS_SOURCES, boardLabel } from '../server/src/collectors/mfdsSources.js';
-import { addDays, isBadTitle, normalizeMfdsUrl, norm } from '../server/src/collectors/textUtils.js';
+import { addDays, isBadTitle, isBoardLabelTitle, normalizeMfdsUrl, norm } from '../server/src/collectors/textUtils.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const COLLECTOR_DIR = path.dirname(__filename);
 const ROOT_DIR = path.resolve(COLLECTOR_DIR, '..');
 const LOG_DIR = path.join(COLLECTOR_DIR, 'logs');
-const COLLECTOR_VERSION = 'v1.8-local-collector-all-sources-detail-title';
+const COLLECTOR_VERSION = 'v1.9-local-collector-category-title-fix';
 
 function ensureDir(dir) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -156,7 +156,7 @@ function isInvalidCollectedTitle(row) {
   const category = norm(row.category || boardLabel(row.board_id));
   const url = normalizeMfdsUrl(row.url || '');
   if (!title || isBadTitle(title)) return true;
-  if (category && title === category) return true;
+  if (category && (title === category || isBoardLabelTitle(title, category))) return true;
   if (/^(단일|통합|상세)\s*키워드\s*검색$/.test(title)) return true;
   if (['법, 시행령, 시행규칙', '법, 시행령, 시험규칙'].includes(title)) return true;
   if (!url || /\/list\.do/i.test(url)) return true;

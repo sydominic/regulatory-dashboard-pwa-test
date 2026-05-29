@@ -1,6 +1,6 @@
 import * as cheerio from 'cheerio';
 import { fetchText, politeDelay } from './httpClient.js';
-import { compareDate, dateInRange, isBadTitle, norm, normalizeMfdsUrl, parseAllDates } from './textUtils.js';
+import { compareDate, dateInRange, isBadTitle, isBoardLabelTitle, norm, normalizeMfdsUrl, parseAllDates } from './textUtils.js';
 
 const BOARD_TITLE_EXACT = new Set([
   '공지', '공고', '보도자료', '법, 시행령, 시행규칙', '법, 시행령, 시험규칙', '고시전문', '훈령전문', '예규전문',
@@ -73,6 +73,7 @@ function isLikelyTitle(title, source = null) {
   if (isBadTitle(t)) return false;
   if (UI_TEXT_EXACT.has(t)) return false;
   if (BOARD_TITLE_EXACT.has(t)) return false;
+  if (isBoardLabelTitle(t, source?.category || '')) return false;
   if (source && (t === source.category || t === source.board_id)) return false;
   if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return false;
   if (/^(미리보기|다운받기|첨부파일|새로운게시물)$/.test(t)) return false;
@@ -96,7 +97,7 @@ function cleanCellText(raw, source) {
   }
   t = norm(t);
   // Avoid storing a cell that merely equals board/category labels.
-  if (BOARD_TITLE_EXACT.has(t) || UI_TEXT_EXACT.has(t)) return '';
+  if (BOARD_TITLE_EXACT.has(t) || UI_TEXT_EXACT.has(t) || isBoardLabelTitle(t, source?.category || '')) return '';
   return t;
 }
 

@@ -1,0 +1,7 @@
+# V1.9 Category-title fix
+
+- Fixes title extraction for MFDS boards whose visual category label differs by spacing from internal category names.
+- Example: `학술토론회` category may be rendered as `학술 토론회`; this must not be saved as a post title.
+- Detail parser now treats category-label variants as headings and selects the next valid line as the actual post title.
+- Local collector rejects title/category equivalence using compact comparison, not only exact string comparison.
+- Existing contaminated rows such as `학술 토론회`, `전문 홍보물`, `안내서/지침`, `안내서 지침` should be deleted and recollected.

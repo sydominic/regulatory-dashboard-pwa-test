@@ -1,12 +1,20 @@
 import * as cheerio from 'cheerio';
 import { fetchText } from './httpClient.js';
-import { isBadTitle, norm, normalizeMfdsUrl, parseAllDates, parseDateAny } from './textUtils.js';
+import { compactLabel, isBadTitle, isBoardLabelTitle, norm, normalizeMfdsUrl, parseAllDates, parseDateAny } from './textUtils.js';
 
 const META_LABEL_RE = /^(등록번호|분야|고시일|등록일|조회수|첨부파일|부서|담당자|전화|현재 페이지의 내용|만족도|이전글|다음글)$/;
 const CATEGORY_TITLES = new Set([
   '공지', '공고', '보도자료', '법, 시행령, 시행규칙', '법, 시행령, 시험규칙', '고시전문', '훈령전문', '예규전문',
-  '제개정고시등', '입법/행정예고', '공무원지침서', '민원인안내서', '안내서/지침', '학술토론회', '전문홍보물'
+  '제개정고시등', '입법/행정예고', '공무원지침서', '민원인안내서', '안내서/지침', '학술토론회', '학술 토론회', '전문홍보물', '전문 홍보물'
 ]);
+
+function isCategoryLikeTitle(title, candidate = {}) {
+  const t = norm(title);
+  if (!t) return false;
+  if (CATEGORY_TITLES.has(t)) return true;
+  if (isBoardLabelTitle(t, candidate?.category || '')) return true;
+  return false;
+}
 
 function isErrorLikePage(bodyText) {
   const t = norm(bodyText);
@@ -40,8 +48,7 @@ function cleanTitleCandidate(raw) {
 function isValidPostTitle(title, candidate = {}) {
   const t = cleanTitleCandidate(title);
   if (isBadTitle(t)) return false;
-  if (CATEGORY_TITLES.has(t)) return false;
-  if (candidate?.category && t === norm(candidate.category)) return false;
+  if (isCategoryLikeTitle(t, candidate)) return false;
   if (/\.(pdf|hwp|hwpx|xls|xlsx|zip)$/i.test(t)) return false;
   if (/^(등록번호|조회수|담당자|전화|부서|고시일|등록일)\b/.test(t)) return false;
   // Exact UI/error labels are rejected by isBadTitle/CATEGORY_TITLES; longer legitimate titles are allowed.
@@ -70,8 +77,12 @@ function titleFromDetailLines(bodyText, candidate = {}) {
   const lines = splitMeaningfulLines(bodyText);
   const category = norm(candidate.category || '');
   const categoryIndexes = [];
+  const categoryCompact = compactLabel(category);
   for (let i = 0; i < lines.length; i += 1) {
-    if ((category && lines[i] === category) || CATEGORY_TITLES.has(lines[i])) categoryIndexes.push(i);
+    const lineCompact = compactLabel(lines[i]);
+    if ((categoryCompact && lineCompact === categoryCompact) || isCategoryLikeTitle(lines[i], candidate)) {
+      categoryIndexes.push(i);
+    }
   }
 
   // MFDS detail pages usually render as: [category] -> [title] -> 등록번호/분야/등록일...
