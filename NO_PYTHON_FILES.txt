@@ -1,2 +1,2 @@
 This package is Node/React/Express for Render. No Python or Streamlit files are included.
-Version: v1.3-node-render-raw-diagnostic
+Version: v1.4-node-render-mfds-network-diagnostic

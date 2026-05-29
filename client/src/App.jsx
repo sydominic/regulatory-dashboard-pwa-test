@@ -91,7 +91,7 @@ function pickDiagnosticSummary(result) {
   const r = meaningful.rssDiag || {};
   const title = h.sampleTitles?.length ? ` / 샘플제목: ${h.sampleTitles.slice(0, 2).join(' | ')}` : '';
   const err = meaningful.errors?.length ? ` / 오류: ${meaningful.errors[0]}` : '';
-  return ` / 진단(${meaningful.category || meaningful.board_id}): RSS body ${numberFmt(r.bodyLength)}·item ${numberFmt(r.itemTagCount)}, HTML status ${h.status || '-'}·body ${numberFmt(h.bodyLength)}·anchor ${numberFmt(h.anchorTotal)}·view ${numberFmt(h.viewLinkCandidates)}·block ${numberFmt(h.textBlockCandidates)}${title}${err}`;
+  return ` / 진단(${meaningful.category || meaningful.board_id}): RSS body ${numberFmt(r.bodyLength)}·item ${numberFmt(r.itemTagCount)}·${r.transport || '-'}, HTML status ${h.status || '-'}·body ${numberFmt(h.bodyLength)}·${h.transport || '-'}·anchor ${numberFmt(h.anchorTotal)}·view ${numberFmt(h.viewLinkCandidates)}·block ${numberFmt(h.textBlockCandidates)}${title}${err}`;
 }
 
 function renderJobProgress(job) {
@@ -223,9 +223,10 @@ function App() {
       const maxPolls = mode === 'fast' ? 180 : 360; // 2초 간격: 빠른수집 최대 6분, 기간수집 최대 12분
       for (let i = 0; i < maxPolls; i += 1) {
         await sleep(2000);
-        const job = await apiGet(`/api/collect/status/${started.jobId}`);
+        const job = await apiGet(`/api/collect/status/${started.jobId}?t=${Date.now()}`);
         lastJob = job;
         setCollectJob(job);
+        if (job.status === 'done') setCollecting(false);
         if (job.status === 'running' || job.status === 'queued') {
           setMessage(renderJobProgress(job));
         }
@@ -324,7 +325,7 @@ function App() {
       {message && <div className="notice ok">{message}</div>}
       {error && <div className="notice error">{error}</div>}
       {loading && <div className="notice info">데이터를 조회하는 중입니다.</div>}
-      {collecting && <div className="notice info">{collectJob ? renderJobProgress(collectJob) : '식약처 게시판 수집 작업을 시작하는 중입니다.'}</div>}
+      {collecting && collectJob?.status !== 'done' && <div className="notice info">{collectJob ? renderJobProgress(collectJob) : '식약처 게시판 수집 작업을 시작하는 중입니다.'}</div>}
 
       <section className="stat-grid desktop-only">
         <Metric title="오늘 신규" value={headerStats.today} sub="오늘 게시 기준" icon={<FileText size={19} />} />

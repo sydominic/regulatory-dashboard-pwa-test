@@ -50,7 +50,7 @@ export async function verifyDetail(candidate) {
   }
 
   try {
-    const { text, finalUrl } = await fetchText(fallback.url, { timeoutMs: 7000, attempts: 1 });
+    const { text, finalUrl } = await fetchText(fallback.url, { timeoutMs: 20000, attempts: 1, referer: 'https://www.mfds.go.kr/' });
     const $ = cheerio.load(text);
     const bodyText = norm($('body').text());
     const detailDate = findRegistrationDate(bodyText);

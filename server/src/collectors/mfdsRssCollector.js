@@ -30,6 +30,9 @@ export async function collectRssSource(source, startDate, endDate) {
     triedUrls: [],
     lastStatus: null,
     lastContentType: '',
+    transport: '',
+    fallbackFrom: '',
+    fallbackReason: '',
     bodyLength: 0,
     itemTagCount: 0,
     snippet: '',
@@ -43,9 +46,12 @@ export async function collectRssSource(source, startDate, endDate) {
   for (const url of rssUrls(source.rssBrdId)) {
     stats.triedUrls.push(url);
     try {
-      const fetched = await fetchText(url, { accept: 'application/rss+xml,application/xml,text/xml,text/html,*/*;q=0.8', timeoutMs: 7000, attempts: 1 });
+      const fetched = await fetchText(url, { accept: 'application/rss+xml,application/xml,text/xml,text/html,*/*;q=0.8', timeoutMs: 20000, attempts: 2, referer: 'https://www.mfds.go.kr/www/rss/list.do' });
       stats.lastStatus = fetched.status || null;
       stats.lastContentType = fetched.contentType || '';
+      stats.transport = fetched.transport || '';
+      stats.fallbackFrom = fetched.fallbackFrom || '';
+      stats.fallbackReason = fetched.fallbackReason || '';
       stats.bodyLength = fetched.text.length;
       stats.snippet = rssSnippet(fetched.text);
       stats.rawStartsWith = String(fetched.text || '').trim().slice(0, 80);

@@ -213,6 +213,9 @@ export async function collectHtmlSource(source, startDate, endDate, options = {}
     bodyLength: 0,
     lastStatus: null,
     lastContentType: '',
+    transport: '',
+    fallbackFrom: '',
+    fallbackReason: '',
     lastFinalUrl: '',
     bodySnippet: '',
     titleTag: '',
@@ -225,12 +228,15 @@ export async function collectHtmlSource(source, startDate, endDate, options = {}
   for (let pageNo = 1; pageNo <= maxPages; pageNo += 1) {
     const url = listUrl(source.url, pageNo);
     try {
-      const fetched = await fetchText(url, { timeoutMs: 15000, attempts: 2 });
+      const fetched = await fetchText(url, { timeoutMs: 30000, attempts: 2, referer: 'https://www.mfds.go.kr/' });
       const { text } = fetched;
       stats.pages += 1;
       stats.bodyLength += text.length;
       stats.lastStatus = fetched.status || null;
       stats.lastContentType = fetched.contentType || '';
+      stats.transport = fetched.transport || '';
+      stats.fallbackFrom = fetched.fallbackFrom || '';
+      stats.fallbackReason = fetched.fallbackReason || '';
       const $ = cheerio.load(text);
       const pageBodyText = norm($('body').text());
       stats.lastFinalUrl = fetched.finalUrl || url;
@@ -242,6 +248,9 @@ export async function collectHtmlSource(source, startDate, endDate, options = {}
         finalUrl: fetched.finalUrl || url,
         status: fetched.status || null,
         contentType: fetched.contentType || '',
+        transport: fetched.transport || '',
+        fallbackFrom: fetched.fallbackFrom || '',
+        fallbackReason: fetched.fallbackReason || '',
         bodyLength: text.length,
         titleTag: stats.titleTag,
         bodySnippet: pageBodyText.slice(0, 500),

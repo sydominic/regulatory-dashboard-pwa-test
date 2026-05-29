@@ -1,0 +1,33 @@
+MFDS Regulatory PWA v1.4 - Node/Render Network Diagnostic
+
+목적
+- v1.3에서 Render 서버가 식약처 HTML/RSS 원문을 bodyLength=0, fetch failed/aborted로 받는 것이 확인됨.
+- v1.4는 수집 성공 이전에 Render → 식약처 네트워크/헤더/timeout/transport 문제를 확정하기 위한 진단 버전.
+
+주요 변경
+1. /api/diag/net 추가
+   - 일반 외부 사이트와 MFDS root 접속을 fetch/node/node4 방식으로 비교.
+
+2. /api/diag/mfds/connect 추가
+   - 특정 게시판 URL, www/non-www, http/https, RSS URL을 fetch/node/node4로 순차 테스트.
+
+3. httpClient 개선
+   - Node fetch 실패 시 native http/https fallback.
+   - IPv4 강제 fallback(node4) 추가.
+   - gzip/deflate/br 응답 압축 해제.
+   - timeout 기본값 상향.
+
+4. raw 진단 API 개선
+   - /api/diag/mfds/raw?board=m_1060&timeout=30000&transport=both|fetch|node|node4
+   - /api/diag/mfds/rss-raw?board=m_1060&timeout=30000&transport=both|fetch|node|node4
+
+5. 화면 표시 개선
+   - 수집 완료 후에도 '수집 진행 중' 문구가 남는 문제 완화.
+   - 진단 요약에 transport 표시 추가.
+
+확인 순서
+1. /api/health → apiVersion: v1.4-node-render-mfds-network-diagnostic 확인
+2. /api/diag/net 확인
+3. /api/diag/mfds/connect?board=m_1060&timeout=30000 확인
+4. /api/diag/mfds/raw?board=m_1060&timeout=30000&transport=node4 확인
+5. 빠른수집 실행 후 RSS/HTML body 및 transport 확인

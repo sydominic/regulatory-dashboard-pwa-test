@@ -34,7 +34,7 @@ supabase_schema.sql
 Expected API version:
 
 ```text
-v1.3-node-render-raw-diagnostic
+v1.4-node-render-mfds-network-diagnostic
 ```
 
 ## Diagnostic API
@@ -54,3 +54,11 @@ GET  /api/collect/result/:jobId
 ```
 
 `POST /api/collect`는 호환용으로 남겨두되, 내부적으로는 작업을 시작하고 즉시 반환합니다.
+
+
+## v1.4 네트워크 진단
+
+- Render에서 식약처 원문을 못 받는 문제를 확인하기 위해 /api/diag/net, /api/diag/mfds/connect 를 추가했습니다.
+- Node fetch 실패 시 native http/https 및 IPv4 fallback을 시도합니다.
+- /api/diag/mfds/raw, /api/diag/mfds/rss-raw 에 timeout, transport 파라미터를 추가했습니다.
+- 수집 완료 후에도 '수집 진행 중' 문구가 남는 문제를 완화했습니다.
