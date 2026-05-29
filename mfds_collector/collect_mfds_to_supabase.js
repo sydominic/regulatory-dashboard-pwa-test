@@ -10,7 +10,7 @@ const __filename = fileURLToPath(import.meta.url);
 const COLLECTOR_DIR = path.dirname(__filename);
 const ROOT_DIR = path.resolve(COLLECTOR_DIR, '..');
 const LOG_DIR = path.join(COLLECTOR_DIR, 'logs');
-const COLLECTOR_VERSION = 'v1.6-local-collector-title-guard';
+const COLLECTOR_VERSION = 'v1.7-local-collector-detail-title';
 
 function ensureDir(dir) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });

@@ -94,20 +94,26 @@ export function isBadTitle(title) {
     '로그인', '회원가입', '검색', '이전', '다음', '처음', '마지막', '더보기', '목록', '메뉴',
     '본문 바로가기', '전체 메뉴', 'RSS', '누리집 안내지도', '전체메뉴', '바로가기', '펼치기',
     '접기', '다운받기', '미리보기', '열기', '첨부파일 보기', '첨부파일 닫기', 'TOP',
-    // v1.6: MFDS list/search UI text must never be stored as a post title.
+    // v1.7: MFDS list/search/help/error UI text must never be stored as a post title.
     '단일 키워드 검색', '통합검색', '상세검색', '검색어', '검색하기', '검색조건', '검색결과',
+    '검색도움말', '검색연산자', '검색연산자 사용방법', '자동완성', '내가찾은검색어',
+    '상세 검색 옵션', '상세 검색 닫기', '검색 상세검색', '검색 범위 설정', '검색 결과 기간 설정',
+    '일시적으로 서비스를 이용할 수 없습니다.', '서비스를 이용할 수 없습니다.', 'Insert title here',
     '전체', '전체보기', '게시판', '게시글', '새로운게시물', '첨부파일', '등록번호', '조회수',
     '공지', '공고', '보도자료', '민원인안내서', '공무원지침서', '제개정고시등',
     '법, 시행령, 시행규칙', '법, 시행령, 시험규칙', '고시전문', '훈령전문', '예규전문',
-    '입법/행정예고', '안내서/지침', '학술토론회', '전문홍보물'
+    '입법/행정예고', '안내서/지침', '학술토론회', '전문홍보물', '현재 페이지의 내용에 만족하십니까?'
   ]);
   if (badExact.has(t)) return true;
   if (/^\d+$/.test(t)) return true;
   if (/^[‹›<>]+$/.test(t)) return true;
-  if (/^(분야|구분|제목|게시일|등록일|담당부서|처리상태|번호)$/.test(t)) return true;
+  if (/^(분야|구분|제목|게시일|등록일|담당부서|처리상태|번호|고시일|전화|담당자|부서)$/.test(t)) return true;
   if (/^(단일|통합|상세)\s*키워드\s*검색$/.test(t)) return true;
+  // Do not block merely because a normal official title contains words like 검색/도움말/서비스.
+  // Block exact UI/error labels only via badExact above.
   if (/^페이지\s*\d+/.test(t)) return true;
   if (/^\d+\s*건$/.test(t)) return true;
+  if (/^(이전글|다음글)$/.test(t)) return true;
   if (t.length > 260) return true;
   return false;
 }

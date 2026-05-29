@@ -153,6 +153,7 @@ export async function collectMfdsItems({ startDate, endDate, mode = 'period', so
         board.detailErrors += 1;
         board.errors.push(verified.error);
       }
+      if (!verified.verified) continue; // v1.7: do not save fallback/list title when detail verification fails.
       const row = verified.row;
       if (!row.item_date || !dateInRange(row.item_date, startDate, endDate)) continue;
       rows.push({

@@ -1,0 +1,30 @@
+# v1.7 Local Collector Detail Title Verification
+
+## 목적
+v1.6에서 로컬 수집은 가능해졌으나, 일부 항목의 제목이 `검색도움말`, `일시적으로 서비스를 이용할 수 없습니다.` 등
+식약처 검색 UI 또는 오류 페이지 문구로 저장되는 문제가 확인되었다.
+
+## 원인
+목록 페이지의 상세 URL 후보와 제목 후보가 같은 게시물 단위로 안전하게 묶이지 않았고,
+상세페이지 검증 실패 시에도 fallback row가 저장될 수 있었다.
+
+## 수정
+1. 상세페이지 검증 실패 시 저장 금지
+2. 최종 제목은 상세페이지 본문에서 카테고리 다음 줄의 실제 게시물 제목을 우선 사용
+3. 상세페이지가 오류/서비스 불가 페이지이면 저장 금지
+4. 목록 HTML에서 임의 cell/container text를 제목으로 사용하지 않음
+5. 목록 후보는 상세 링크 anchor text를 우선하고 날짜가 없는 HTML 후보는 저장하지 않음
+6. `검색도움말`, `검색연산자`, `일시적으로 서비스를 이용할 수 없습니다.` 등 오염 제목 차단
+7. 기존 오염자료 정리 SQL 업데이트
+
+## 사용 순서
+1. Supabase SQL Editor에서 `mfds_collector/cleanup_bad_titles.sql`의 SELECT로 대상 확인
+2. 확인 후 DELETE 주석 해제 실행
+3. v1.7 로컬 수집기 실행
+4. Render 대시보드에서 조회
+
+
+## v1.7 title guard rule clarification
+- UI/error text is blocked when it is an exact title value such as `검색도움말`, `단일 키워드 검색`, or `일시적으로 서비스를 이용할 수 없습니다.`.
+- A longer legitimate title is not blocked merely because it contains words such as `검색`, `도움말`, or `서비스`.
+- Error-page detection is evaluated against the full detail page only when the page is short/dominantly an error screen and lacks post metadata such as 등록일/조회수/담당부서/등록번호.

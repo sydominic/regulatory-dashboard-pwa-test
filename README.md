@@ -1,8 +1,8 @@
-# MFDS Regulatory Update Dashboard v1.6
+# MFDS Regulatory Update Dashboard v1.7
 
 Render / Node / React / Express 기반 대시보드입니다. Python/Streamlit 파일은 없습니다.
 
-## v1.6 핵심 구조
+## v1.7 핵심 구조
 
 v1.4 진단 결과 Render 서버에서 `mfds.go.kr` 원문 HTML/RSS 요청이 timeout 되는 것으로 확인되어, 수집과 조회를 분리했습니다.
 
@@ -51,5 +51,9 @@ ALLOW_LOCAL_POSTGRES=false
 정상 버전값:
 
 ```
-v1.6-node-render-local-collector-title-guard
+v1.7-node-render-local-collector-detail-title
 ```
+
+
+## v1.7 제목 차단 기준
+금칙어는 제목과 완전일치할 때만 제목 차단에 사용합니다. 정상적인 긴 제목에 `검색`, `도움말`, `서비스` 같은 단어가 포함되어도 저장을 막지 않습니다. 다만 상세페이지 전체가 짧은 오류화면이고 등록일/조회수/담당부서 같은 게시물 메타정보가 없으면 오류페이지로 보고 저장하지 않습니다.

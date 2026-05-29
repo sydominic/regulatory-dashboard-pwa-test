@@ -10,7 +10,7 @@ const BOARD_TITLE_EXACT = new Set([
 const UI_TEXT_EXACT = new Set([
   '단일 키워드 검색', '통합검색', '상세검색', '검색어', '검색하기', '검색조건', '검색결과', '전체', '전체보기',
   '첨부파일', '첨부파일 보기', '첨부파일 닫기', '미리보기', '다운받기', '열기', '새로운게시물', '조회수', '등록번호',
-  '게시일', '등록일', '담당부서', '번호', '제목', '구분', '분야'
+  '게시일', '등록일', '담당부서', '번호', '제목', '구분', '분야', '검색도움말', '검색연산자', '검색연산자 사용방법', '일시적으로 서비스를 이용할 수 없습니다.', 'Insert title here'
 ]);
 
 function listUrl(baseUrl, pageNo) {
@@ -78,6 +78,8 @@ function isLikelyTitle(title, source = null) {
   if (/^(미리보기|다운받기|첨부파일|새로운게시물)$/.test(t)) return false;
   if (/\.(pdf|hwp|hwpx|xls|xlsx|zip)$/i.test(t)) return false;
   if (/^(단일|통합|상세)\s*키워드\s*검색$/.test(t)) return false;
+  // Do not reject longer legitimate titles just because they contain UI-like words.
+  // Exact UI/error labels are rejected by isBadTitle/UI_TEXT_EXACT above.
   if (t.length < 4 || t.length > 180) return false;
   return true;
 }
@@ -91,10 +93,9 @@ function cleanCellText(raw, source) {
   for (const bad of [...UI_TEXT_EXACT, source?.category || '', source?.board_id || '']) {
     if (!bad) continue;
     if (t === bad) return '';
-    t = t.replaceAll(bad, ' ');
   }
   t = norm(t);
-  // Avoid storing a cell that merely concatenates board/category labels.
+  // Avoid storing a cell that merely equals board/category labels.
   if (BOARD_TITLE_EXACT.has(t) || UI_TEXT_EXACT.has(t)) return '';
   return t;
 }
@@ -124,6 +125,9 @@ function findPostSignalInContainer($, container, source, baseUrl) {
 }
 
 function pickTitleFromContainer($, container, source, signal = null) {
+  // v1.7: never derive title from arbitrary cell/container text.
+  // The title must be the actual text of the post-detail anchor. This prevents
+  // search/help/error UI text from being stored as a post title.
   const candidates = [];
 
   if (signal?.el) {
@@ -135,21 +139,8 @@ function pickTitleFromContainer($, container, source, signal = null) {
     const signalA = postSignalFromAnchor($, a, source, signal?.url || source.url);
     const title = norm($(a).text());
     if (!signalA || !isLikelyTitle(title, source)) return;
-    candidates.push({ title, score: 80 + Math.min(title.length, 80) / 10 - idx, reason: 'linked-anchor' });
+    candidates.push({ title, score: 90 - idx, reason: 'linked-anchor' });
   });
-
-  const cellSelectors = 'td, th, p, strong, span, div';
-  $(container).find(cellSelectors).each((idx, el) => {
-    const raw = norm($(el).clone().children('a, button, script, style').remove().end().text());
-    const title = cleanCellText(raw, source);
-    if (!isLikelyTitle(title, source)) return;
-    candidates.push({ title, score: 40 + Math.min(title.length, 100) / 10 - Math.min(idx, 10), reason: 'cell-text' });
-  });
-
-  const direct = cleanCellText($(container).clone().children('script,style').remove().end().text(), source);
-  if (isLikelyTitle(direct, source) && direct.length <= 180) {
-    candidates.push({ title: direct, score: 10, reason: 'container-text' });
-  }
 
   const unique = [];
   const seen = new Set();
@@ -236,7 +227,7 @@ function addRowsFromAnchors($, source, baseUrl, startDate, endDate, pageRows, se
       addRow(pageRows, seen, row, source, stats);
     } else if (!itemDate) {
       stats.noDateCandidates += 1;
-      addRow(pageRows, seen, row, source, stats);
+      stats.rejectedBadTitle += 1;
     } else {
       stats.outOfRange += 1;
     }
@@ -273,7 +264,7 @@ function addRowsFromContainers($, source, baseUrl, startDate, endDate, pageRows,
       addRow(pageRows, seen, row, source, stats);
     } else if (!itemDate) {
       stats.noDateCandidates += 1;
-      addRow(pageRows, seen, row, source, stats);
+      stats.rejectedBadTitle += 1;
     } else {
       stats.outOfRange += 1;
     }
