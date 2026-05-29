@@ -60,7 +60,9 @@ function buildEmptyBoardResult(source) {
 
 export async function collectMfdsItems({ startDate, endDate, mode = 'period', sources = MFDS_SOURCES, onProgress = null } = {}) {
   const maxPages = maxPagesFor(mode, startDate, endDate);
-  const detailLimit = mode === 'fast' ? 45 : 140;
+  // v1.8: detail verification limit is applied per board, not globally.
+  // The previous global limit stopped collection before 안내서/지침, 학술토론회, 전문홍보물 were reached.
+  const detailLimitPerBoard = mode === 'fast' ? 45 : 140;
   let detailLimitReached = false;
   const progress = (event, payload = {}) => {
     if (typeof onProgress === 'function') {
@@ -140,9 +142,9 @@ export async function collectMfdsItems({ startDate, endDate, mode = 'period', so
     for (const candidate of uniqueCandidates) {
       // 후보 날짜가 기간 밖이면 상세페이지 검증 전에는 제외하되, 날짜가 없는 후보는 상세 검증한다.
       if (candidate.item_date && !dateInRange(candidate.item_date, startDate, endDate)) continue;
-      if (detailChecked >= detailLimit) {
+      if (board.detailChecked >= detailLimitPerBoard) {
         detailLimitReached = true;
-        board.errors.push(`detail limit reached (${detailLimit})`);
+        board.errors.push(`board detail limit reached (${detailLimitPerBoard})`);
         break;
       }
       const verified = await verifyDetail(candidate);
@@ -174,10 +176,8 @@ export async function collectMfdsItems({ startDate, endDate, mode = 'period', so
     errors.push(...board.errors);
     boardResults.push(board);
     progress('board-done', { board_id: source.board_id, category: boardLabel(source.board_id), board, rssChecked, htmlChecked, detailChecked, rows: rows.length });
-    if (detailLimitReached) {
-      progress('detail-limit-stop', { detailLimit, rssChecked, htmlChecked, detailChecked, rows: rows.length });
-      break;
-    }
+    // v1.8: never stop the whole source loop because one board hit its detail limit.
+    // Continue so all configured boards, including 안내서/지침·학술토론회·전문홍보물, are attempted.
     await politeDelay(120);
   }
 
@@ -192,7 +192,8 @@ export async function collectMfdsItems({ startDate, endDate, mode = 'period', so
     checked: deduped.length,
     latestItemDate,
     maxPages,
-    detailLimit,
+    detailLimit: detailLimitPerBoard,
+    detailLimitScope: 'per-board',
     detailLimitReached
   };
 }

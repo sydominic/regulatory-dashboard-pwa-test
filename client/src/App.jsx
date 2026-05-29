@@ -240,8 +240,6 @@ function App() {
       </>}
       <div className="button-row">
         <button className="btn primary" onClick={applyFilters} disabled={loading}><Search size={16} />조회</button>
-        <button className="btn collect" onClick={() => collect('fast')} disabled={collecting}><Zap size={16} />빠른수집</button>
-        <button className="btn collect-dark" onClick={() => collect('period')} disabled={collecting}><RefreshCw size={16} />기간수집</button>
       </div>
     </>
   );
