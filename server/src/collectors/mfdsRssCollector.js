@@ -16,7 +16,7 @@ function textOf($, el, selector) {
 }
 
 function rssSnippet(text) {
-  return norm(String(text || '').replace(/<[^>]+>/g, ' ')).slice(0, 300);
+  return norm(String(text || '').replace(/<[^>]+>/g, ' ')).slice(0, 1000);
 }
 
 export async function collectRssSource(source, startDate, endDate) {
@@ -32,7 +32,9 @@ export async function collectRssSource(source, startDate, endDate) {
     lastContentType: '',
     bodyLength: 0,
     itemTagCount: 0,
-    snippet: ''
+    snippet: '',
+    rawStartsWith: '',
+    parseMode: 'item-tag'
   };
   if (!source.rssBrdId) return { rows, errors, stats };
 
@@ -46,6 +48,7 @@ export async function collectRssSource(source, startDate, endDate) {
       stats.lastContentType = fetched.contentType || '';
       stats.bodyLength = fetched.text.length;
       stats.snippet = rssSnippet(fetched.text);
+      stats.rawStartsWith = String(fetched.text || '').trim().slice(0, 80);
       const itemCount = (fetched.text.match(/<item[\s>]/gi) || []).length;
       stats.itemTagCount = itemCount;
       if (!itemCount) {

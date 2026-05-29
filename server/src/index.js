@@ -14,6 +14,7 @@ import { collectMfdsItems } from './collectors/mfdsCollector.js';
 import { collectRssSource } from './collectors/mfdsRssCollector.js';
 import { collectHtmlSource } from './collectors/mfdsHtmlCollector.js';
 import { addDays, compareDate, norm, normalizeMfdsUrl } from './collectors/textUtils.js';
+import { fetchTextRaw } from './collectors/httpClient.js';
 
 const { Pool } = pg;
 
@@ -52,7 +53,7 @@ const DATA_DIR = path.join(ROOT_DIR, 'data');
 const JSON_STORE_PATH = path.join(DATA_DIR, 'mfds_items_store.json');
 const JSON_META_PATH = path.join(DATA_DIR, 'mfds_meta_store.json');
 
-const API_VERSION = 'v1.2-node-render-mfds-parser-diagnostic';
+const API_VERSION = 'v1.3-node-render-raw-diagnostic';
 const PORT = Number(process.env.PORT || process.env.LOCAL_API_PORT || 8892);
 const HOST = process.env.HOST || '0.0.0.0';
 const RAW_DATABASE_URL = String(process.env.DATABASE_URL || process.env.SUPABASE_DB_URL || '').trim();
@@ -566,6 +567,13 @@ function updateJobFromProgress(job, p = {}) {
     const idx = job.progress.boardResults.findIndex(x => x.board_id === p.board.board_id);
     if (idx >= 0) job.progress.boardResults[idx] = p.board;
     else job.progress.boardResults.push(p.board);
+    if (['html-done', 'candidates-done', 'board-done'].includes(p.event)) {
+      const h = p.board.htmlDiag || {};
+      const r = p.board.rssDiag || {};
+      const msg = `[diag ${p.board.board_id}] rssItems=${r.itemTagCount || 0} rssBody=${r.bodyLength || 0} htmlStatus=${h.status || ''} htmlBody=${h.bodyLength || 0} anchors=${h.anchorTotal || 0} view=${h.viewLinkCandidates || 0} block=${h.textBlockCandidates || 0} candidates=${p.board.candidates || 0} title=${String(h.titleTag || '').slice(0, 60)}`;
+      pushJobLog(job, msg);
+      console.log(`[collect-job ${job.jobId}] ${msg}`);
+    }
   }
   if (p.event) pushJobLog(job, `[${p.event}] ${p.category || p.board_id || ''}`.trim());
 }
@@ -665,7 +673,7 @@ app.get('/api/health', (_req, res) => {
     ok: true,
     service: 'mfds-regulatory-pwa-api',
     apiVersion: API_VERSION,
-    collector: 'async-job-rss-html-link-block-parser-diagnostic',
+    collector: 'async-job-raw-rss-html-diagnostic',
     dbMode: mode,
     databaseConfigured: Boolean(DATABASE_URL || USE_SUPABASE_REST),
     databaseUrlStatus: DATABASE_URL_STATUS.reason,
@@ -721,6 +729,82 @@ app.get('/api/diag/mfds/html', async (req, res, next) => {
     const maxPages = Math.max(1, Math.min(3, Number(req.query.maxPages || 1)));
     const result = await collectHtmlSource(source, startDate, endDate, { maxPages });
     res.json({ ok: true, board_id: source.board_id, category: source.category, startDate, endDate, maxPages, stats: result.stats, count: result.rows.length, sample: result.rows.slice(0, 5), errors: result.errors.slice(0, 10) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+
+
+function rawSnippet(text, max = 1200) {
+  return norm(String(text || '').replace(/<script[\s\S]*?<\/script>/gi, ' ').replace(/<style[\s\S]*?<\/style>/gi, ' ')).slice(0, max);
+}
+
+function rssDiagUrls(brdId) {
+  if (!brdId) return [];
+  return [
+    `http://www.mfds.go.kr/www/rss/brd.do?brdId=${encodeURIComponent(brdId)}`,
+    `https://www.mfds.go.kr/www/rss/brd.do?brdId=${encodeURIComponent(brdId)}`
+  ];
+}
+
+app.get('/api/diag/mfds/raw', async (req, res, next) => {
+  try {
+    const boardId = String(req.query.board || 'm_1060');
+    const source = MFDS_SOURCES.find(x => x.board_id === boardId) || MFDS_SOURCES[0];
+    const result = await fetchTextRaw(`${source.url}${source.url.includes('?') ? '&' : '?'}_diag=${Date.now()}`, { timeoutMs: 15000, attempts: 1, referer: 'https://www.mfds.go.kr/' });
+    const text = result.text || '';
+    res.json({
+      ok: result.ok,
+      apiVersion: API_VERSION,
+      board_id: source.board_id,
+      category: source.category,
+      url: source.url,
+      finalUrl: result.finalUrl,
+      status: result.status,
+      statusText: result.statusText,
+      contentType: result.contentType,
+      bodyLength: text.length,
+      error: result.error,
+      titleTag: (text.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || '').replace(/<[^>]+>/g, ' ').trim().slice(0, 300),
+      anchorCount: (text.match(/<a\b/gi) || []).length,
+      viewDoCount: (text.match(/view\.do/gi) || []).length,
+      seqCount: (text.match(/seq\s*[=:]/gi) || []).length + (text.match(/[?&]seq=/gi) || []).length,
+      dateTokenCount: (text.match(/20\d{2}[.\-/년\s]*\d{1,2}[.\-/월\s]*\d{1,2}/g) || []).length,
+      knownLatestTitleHit: /의료기기\s*비임상시험분야|한약\(생약\)제제|원료마약/.test(text),
+      textSnippet: rawSnippet(text, 1500),
+      htmlSnippet: text.slice(0, 1500)
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.get('/api/diag/mfds/rss-raw', async (req, res, next) => {
+  try {
+    const boardId = String(req.query.board || 'm_1060');
+    const source = MFDS_SOURCES.find(x => x.board_id === boardId) || MFDS_SOURCES[0];
+    const urls = rssDiagUrls(source.rssBrdId);
+    const attempts = [];
+    for (const url of urls) {
+      const result = await fetchTextRaw(url, { accept: 'application/rss+xml,application/xml,text/xml,text/html,*/*;q=0.8', timeoutMs: 10000, attempts: 1, referer: 'https://www.mfds.go.kr/www/rss/list.do' });
+      attempts.push({
+        url,
+        ok: result.ok,
+        finalUrl: result.finalUrl,
+        status: result.status,
+        statusText: result.statusText,
+        contentType: result.contentType,
+        bodyLength: (result.text || '').length,
+        error: result.error,
+        itemTagCount: ((result.text || '').match(/<item[\s>]/gi) || []).length,
+        channelTagCount: ((result.text || '').match(/<channel[\s>]/gi) || []).length,
+        titleTag: ((result.text || '').match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || '').replace(/<[^>]+>/g, ' ').trim().slice(0, 300),
+        snippet: rawSnippet(result.text || '', 1200),
+        rawStartsWith: String(result.text || '').trim().slice(0, 120)
+      });
+    }
+    res.json({ ok: true, apiVersion: API_VERSION, board_id: source.board_id, category: source.category, rssBrdId: source.rssBrdId || null, attempts });
   } catch (err) {
     next(err);
   }
@@ -825,7 +909,7 @@ app.use((err, _req, res, _next) => {
 app.listen(PORT, HOST, async () => {
   console.log(`MFDS Regulatory PWA API listening on http://${HOST}:${PORT}`);
   console.log(`API version: ${API_VERSION}`);
-  console.log(`Collector: async-job-rss-html-link-block-parser-diagnostic`);
+  console.log(`Collector: async-job-raw-rss-html-diagnostic`);
   console.log(`Database configured: ${Boolean(DATABASE_URL || USE_SUPABASE_REST)} (${dbMode()})`);
   console.log(`DATABASE_URL status: ${DATABASE_URL_STATUS.reason}`);
   console.log(`Supabase REST status: ${SUPABASE_REST_STATUS.reason}`);

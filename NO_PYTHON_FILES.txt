@@ -1,2 +1,2 @@
-This package is a Node/React/Vite + Express + Render deployment package.
-No Python or Streamlit runtime files are required.
+This package is Node/React/Express for Render. No Python or Streamlit files are included.
+Version: v1.3-node-render-raw-diagnostic

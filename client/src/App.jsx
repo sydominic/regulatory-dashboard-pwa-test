@@ -81,6 +81,19 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+
+function pickDiagnosticSummary(result) {
+  const boards = result?.boardResults || [];
+  if (!boards.length) return '';
+  const meaningful = boards.find(b => (b?.htmlDiag?.bodyLength || b?.rssDiag?.bodyLength || b?.errors?.length)) || boards[0];
+  if (!meaningful) return '';
+  const h = meaningful.htmlDiag || {};
+  const r = meaningful.rssDiag || {};
+  const title = h.sampleTitles?.length ? ` / 샘플제목: ${h.sampleTitles.slice(0, 2).join(' | ')}` : '';
+  const err = meaningful.errors?.length ? ` / 오류: ${meaningful.errors[0]}` : '';
+  return ` / 진단(${meaningful.category || meaningful.board_id}): RSS body ${numberFmt(r.bodyLength)}·item ${numberFmt(r.itemTagCount)}, HTML status ${h.status || '-'}·body ${numberFmt(h.bodyLength)}·anchor ${numberFmt(h.anchorTotal)}·view ${numberFmt(h.viewLinkCandidates)}·block ${numberFmt(h.textBlockCandidates)}${title}${err}`;
+}
+
 function renderJobProgress(job) {
   const p = job?.progress || {};
   const current = job?.current || {};
@@ -219,11 +232,14 @@ function App() {
         if (job.status === 'done') {
           const data = job.result || {};
           const baseMsg = `${mode === 'fast' ? '빠른수집' : '기간수집'} 결과: 신규 ${numberFmt(data.inserted)}건, 중복 ${numberFmt(data.skipped)}건, 확인 ${numberFmt(data.checked)}건, RSS 확인 ${numberFmt(data.rssChecked)}건, HTML 확인 ${numberFmt(data.htmlChecked)}건, 상세검증 ${numberFmt(data.detailChecked)}건${data.latestItemDate ? `, 수집 확인 최신일 ${data.latestItemDate}` : ''}${data.detailLimitReached ? `, 상세검증 제한 ${numberFmt(data.detailLimit)}건 도달` : ''}`;
+          const diag = pickDiagnosticSummary(data);
           if (data.warning) {
             const firstError = data.errors?.length ? ` / 첫 오류: ${data.errors[0]}` : '';
-            setError(`수집 주의: 후보 확인이 없거나 기간 내 저장 후보가 없습니다. ${baseMsg}${firstError}`);
+            setMessage(baseMsg + diag);
+            setError(`수집 주의: 게시물 후보를 인식하지 못했거나 기간 내 저장 후보가 없습니다.${firstError}`);
           } else {
-            setMessage(baseMsg);
+            setMessage(baseMsg + diag);
+            setError('');
           }
           await loadOptions();
           await loadData(1, 1, filters);

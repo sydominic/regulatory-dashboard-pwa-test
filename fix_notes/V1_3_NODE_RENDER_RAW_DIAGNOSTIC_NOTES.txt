@@ -1,0 +1,23 @@
+v1.3 Node/Render raw diagnostic version
+
+Purpose
+- Determine whether MFDS posts are not recognized at source-fetch level or candidate-parser level.
+- Keep UI layout, tabs, buttons, and table layout unchanged.
+
+Changes
+1. Added raw diagnostic APIs:
+   - /api/diag/mfds/raw?board=m_1060
+   - /api/diag/mfds/rss-raw?board=m_1060
+2. Enhanced HTML diagnostics:
+   - HTTP status, content-type, final URL, title tag, body length, body text snippet, anchor count, view.do count, seq count, date token count.
+3. Enhanced job logs:
+   - board-level RSS body/item count, HTML body/anchor/view/block candidate count, candidate count.
+4. Fixed stale collection banner:
+   - when a job finishes with warning, the previous “수집 진행 중” message is replaced by a final result and diagnostic summary.
+5. Status/result endpoints remain no-store to reduce stale polling responses.
+
+What to check after deployment
+- /api/health -> apiVersion must be v1.3-node-render-raw-diagnostic.
+- Open /api/diag/mfds/raw?board=m_1060 and check bodyLength, anchorCount, viewDoCount, dateTokenCount, textSnippet.
+- Open /api/diag/mfds/rss-raw?board=m_1060 and check status, bodyLength, itemTagCount, snippet.
+- Run quick collect and check final diagnostic summary.

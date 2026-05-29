@@ -91,7 +91,8 @@ export async function collectMfdsItems({ startDate, endDate, mode = 'period', so
       contentType: rss.stats.lastContentType || '',
       feedUrl: rss.stats.feedUrl || null,
       triedUrls: rss.stats.triedUrls || [],
-      snippet: rss.stats.snippet || ''
+      snippet: rss.stats.snippet || '',
+      rawStartsWith: rss.stats.rawStartsWith || ''
     };
     board.errors.push(...rss.errors.slice(0, 3));
     rssChecked += board.rssChecked;
@@ -113,6 +114,11 @@ export async function collectMfdsItems({ startDate, endDate, mode = 'period', so
       dateTokens: html.stats.dateTokens || 0,
       outOfRange: html.stats.outOfRange || 0,
       contentType: html.stats.lastContentType || '',
+      status: html.stats.lastStatus || null,
+      finalUrl: html.stats.lastFinalUrl || '',
+      titleTag: html.stats.titleTag || '',
+      bodySnippet: html.stats.bodySnippet || '',
+      pageDiagnostics: html.stats.pageDiagnostics || [],
       sampleTitles: html.stats.sampleTitles || []
     };
     board.errors.push(...html.errors.slice(0, 3));

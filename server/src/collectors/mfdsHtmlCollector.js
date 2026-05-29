@@ -213,6 +213,10 @@ export async function collectHtmlSource(source, startDate, endDate, options = {}
     bodyLength: 0,
     lastStatus: null,
     lastContentType: '',
+    lastFinalUrl: '',
+    bodySnippet: '',
+    titleTag: '',
+    pageDiagnostics: [],
     sampleTitles: []
   };
   let previousSignature = '';
@@ -228,6 +232,24 @@ export async function collectHtmlSource(source, startDate, endDate, options = {}
       stats.lastStatus = fetched.status || null;
       stats.lastContentType = fetched.contentType || '';
       const $ = cheerio.load(text);
+      const pageBodyText = norm($('body').text());
+      stats.lastFinalUrl = fetched.finalUrl || url;
+      stats.titleTag = norm($('title').first().text()).slice(0, 200);
+      if (!stats.bodySnippet) stats.bodySnippet = pageBodyText.slice(0, 1000);
+      const pageDiag = {
+        pageNo,
+        url,
+        finalUrl: fetched.finalUrl || url,
+        status: fetched.status || null,
+        contentType: fetched.contentType || '',
+        bodyLength: text.length,
+        titleTag: stats.titleTag,
+        bodySnippet: pageBodyText.slice(0, 500),
+        anchorTotalBefore: stats.anchorTotal,
+        checkedBefore: stats.checked,
+        inRangeBefore: stats.inRange,
+        sampleTitles: []
+      };
       const pageRows = [];
       const seen = new Set();
 
@@ -236,7 +258,14 @@ export async function collectHtmlSource(source, startDate, endDate, options = {}
 
       for (const r of pageRows.slice(0, 3)) {
         if (!stats.sampleTitles.includes(r.title)) stats.sampleTitles.push(r.title);
+        pageDiag.sampleTitles.push(r.title);
       }
+      pageDiag.anchorTotal = stats.anchorTotal - pageDiag.anchorTotalBefore;
+      pageDiag.checked = stats.checked - pageDiag.checkedBefore;
+      pageDiag.inRange = stats.inRange - pageDiag.inRangeBefore;
+      pageDiag.rows = pageRows.length;
+      pageDiag.dateTokensTotal = stats.dateTokens;
+      stats.pageDiagnostics.push(pageDiag);
 
       const pageDates = pageRows.map(r => r.item_date).filter(Boolean);
       const signature = pageSignature(pageRows);
@@ -261,11 +290,13 @@ export async function collectHtmlSource(source, startDate, endDate, options = {}
       await politeDelay(120);
     } catch (err) {
       errors.push(`${source.board_id} HTML page ${pageNo}: ${err?.message || err}`);
+      stats.pageDiagnostics.push({ pageNo, url, error: err?.message || String(err) });
       emptyPages += 1;
       if (emptyPages >= 2) break;
     }
   }
 
   stats.sampleTitles = stats.sampleTitles.slice(0, 5);
+  stats.pageDiagnostics = stats.pageDiagnostics.slice(0, 5);
   return { rows, errors, stats };
 }
