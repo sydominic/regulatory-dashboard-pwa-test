@@ -114,6 +114,8 @@ export async function collectMfdsItems({ startDate, endDate, mode = 'period', so
       viewLinkCandidates: html.stats.viewLinkCandidates || 0,
       textBlockCandidates: html.stats.textBlockCandidates || 0,
       noDateCandidates: html.stats.noDateCandidates || 0,
+      rejectedBadTitle: html.stats.rejectedBadTitle || 0,
+      rejectedBadUrl: html.stats.rejectedBadUrl || 0,
       dateTokens: html.stats.dateTokens || 0,
       outOfRange: html.stats.outOfRange || 0,
       contentType: html.stats.lastContentType || '',

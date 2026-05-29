@@ -1,8 +1,8 @@
-# MFDS Regulatory Update Dashboard v1.5
+# MFDS Regulatory Update Dashboard v1.6
 
 Render / Node / React / Express 기반 대시보드입니다. Python/Streamlit 파일은 없습니다.
 
-## v1.5 핵심 구조
+## v1.6 핵심 구조
 
 v1.4 진단 결과 Render 서버에서 `mfds.go.kr` 원문 HTML/RSS 요청이 timeout 되는 것으로 확인되어, 수집과 조회를 분리했습니다.
 
@@ -51,5 +51,5 @@ ALLOW_LOCAL_POSTGRES=false
 정상 버전값:
 
 ```
-v1.5-node-render-dashboard-local-collector
+v1.6-node-render-local-collector-title-guard
 ```

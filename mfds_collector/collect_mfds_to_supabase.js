@@ -4,13 +4,13 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { collectMfdsItems } from '../server/src/collectors/mfdsCollector.js';
 import { MFDS_SOURCES, boardLabel } from '../server/src/collectors/mfdsSources.js';
-import { addDays, normalizeMfdsUrl, norm } from '../server/src/collectors/textUtils.js';
+import { addDays, isBadTitle, normalizeMfdsUrl, norm } from '../server/src/collectors/textUtils.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const COLLECTOR_DIR = path.dirname(__filename);
 const ROOT_DIR = path.resolve(COLLECTOR_DIR, '..');
 const LOG_DIR = path.join(COLLECTOR_DIR, 'logs');
-const COLLECTOR_VERSION = 'v1.5-local-collector-supabase-sync';
+const COLLECTOR_VERSION = 'v1.6-local-collector-title-guard';
 
 function ensureDir(dir) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -151,22 +151,41 @@ async function loadExisting(supa, logger) {
   return { keys, urls };
 }
 
-function normalizeForInsert(rows) {
+function isInvalidCollectedTitle(row) {
+  const title = norm(row.title);
+  const category = norm(row.category || boardLabel(row.board_id));
+  const url = normalizeMfdsUrl(row.url || '');
+  if (!title || isBadTitle(title)) return true;
+  if (category && title === category) return true;
+  if (/^(단일|통합|상세)\s*키워드\s*검색$/.test(title)) return true;
+  if (['법, 시행령, 시행규칙', '법, 시행령, 시험규칙'].includes(title)) return true;
+  if (!url || /\/list\.do/i.test(url)) return true;
+  return false;
+}
+
+function normalizeForInsert(rows, logger = null) {
   const now = kstNowString();
-  return rows.map(row => {
+  let rejected = 0;
+  const normalizedRows = rows.map(row => {
     const normalizedUrl = normalizeMfdsUrl(row.url || '');
     const normalized = {
       site: row.site || '식약처',
       category: row.category || boardLabel(row.board_id),
       board_id: row.board_id || '',
       item_date: row.item_date || '',
-      title: row.title || '',
+      title: norm(row.title || ''),
       url: normalizedUrl,
       collected_at: now
     };
     normalized.item_key = stableItemKey(normalized);
     return normalized;
-  }).filter(row => row.title && row.item_date && row.item_key);
+  }).filter(row => {
+    const ok = row.title && row.item_date && row.item_key && !isInvalidCollectedTitle(row);
+    if (!ok) rejected += 1;
+    return ok;
+  });
+  if (logger && rejected) logger.line(`품질필터 제외: ${rejected}건 (검색 UI/게시판명/목록URL 등 제목 오인식 방지)`);
+  return normalizedRows;
 }
 
 async function insertRows(supa, rows, logger) {
@@ -220,7 +239,7 @@ async function main() {
     }
   });
 
-  const normalized = normalizeForInsert(collected.rows);
+  const normalized = normalizeForInsert(collected.rows, logger);
   logger.line(`수집 후보: raw ${collected.rows.length}건, 저장 가능 ${normalized.length}건, latest=${collected.latestItemDate || '-'}`);
 
   let inserted = 0;

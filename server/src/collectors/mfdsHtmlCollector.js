@@ -2,12 +2,22 @@ import * as cheerio from 'cheerio';
 import { fetchText, politeDelay } from './httpClient.js';
 import { compareDate, dateInRange, isBadTitle, norm, normalizeMfdsUrl, parseAllDates } from './textUtils.js';
 
+const BOARD_TITLE_EXACT = new Set([
+  '공지', '공고', '보도자료', '법, 시행령, 시행규칙', '법, 시행령, 시험규칙', '고시전문', '훈령전문', '예규전문',
+  '제개정고시등', '입법/행정예고', '공무원지침서', '민원인안내서', '안내서/지침', '학술토론회', '전문홍보물'
+]);
+
+const UI_TEXT_EXACT = new Set([
+  '단일 키워드 검색', '통합검색', '상세검색', '검색어', '검색하기', '검색조건', '검색결과', '전체', '전체보기',
+  '첨부파일', '첨부파일 보기', '첨부파일 닫기', '미리보기', '다운받기', '열기', '새로운게시물', '조회수', '등록번호',
+  '게시일', '등록일', '담당부서', '번호', '제목', '구분', '분야'
+]);
+
 function listUrl(baseUrl, pageNo) {
   const url = new URL(baseUrl);
   if (Number(pageNo) > 1) {
-    // MFDS list pages have historically accepted either page or pageIndex depending on board template.
-    // Keep page for the current board pages; the fallback parser is intentionally tolerant.
     url.searchParams.set('page', String(pageNo));
+    url.searchParams.set('pageIndex', String(pageNo));
   }
   url.searchParams.set('_ts', String(Date.now()).slice(-8));
   return url.toString();
@@ -20,7 +30,7 @@ function looksLikeFileOrUtility(raw) {
 
 function extractSeq(raw) {
   const value = String(raw || '');
-  const direct = value.match(/[?&]seq=(\d+)/i);
+  const direct = value.match(/[?&](?:seq|nttId|bbscttSn|articleSeq|boardSeq)=(\d{3,})/i);
   if (direct) return direct[1];
   const named = value.match(/(?:seq|nttId|bbscttSn|articleSeq|boardSeq)["'\s:=,()]+(\d{3,})/i);
   if (named) return named[1];
@@ -29,9 +39,19 @@ function extractSeq(raw) {
   return '';
 }
 
+function isViewHref(href, boardId) {
+  const raw = String(href || '');
+  const lower = raw.toLowerCase();
+  if (!raw || raw.startsWith('#')) return false;
+  if (looksLikeFileOrUtility(raw)) return false;
+  if (lower.includes('/brd/') && lower.includes(`/${String(boardId).toLowerCase()}/`) && lower.includes('view.do')) return true;
+  if (lower.includes('view.do') && /(?:^|[?&])(?:seq|nttid|bbscttsn|articleseq|boardseq)=\d{3,}/i.test(raw)) return true;
+  return false;
+}
+
 function makeViewUrl(source, rawHref, baseUrl, seq = '') {
   const raw = String(rawHref || '').trim();
-  if (raw && !raw.startsWith('#') && !raw.toLowerCase().startsWith('javascript:')) {
+  if (raw && !raw.startsWith('#') && !raw.toLowerCase().startsWith('javascript:') && isViewHref(raw, source.board_id)) {
     return normalizeMfdsUrl(raw, baseUrl);
   }
   if (seq) {
@@ -40,26 +60,105 @@ function makeViewUrl(source, rawHref, baseUrl, seq = '') {
   return '';
 }
 
-function isViewHref(href, boardId) {
-  const raw = String(href || '');
-  const lower = raw.toLowerCase();
-  if (!raw || raw.startsWith('#')) return false;
-  if (looksLikeFileOrUtility(raw)) return false;
-  // MFDS often renders relative links as view.do?... or ./view.do?...;
-  // v1.1 only accepted /view.do and missed those cases.
-  if (lower.includes('view.do') && /(?:^|[?&])seq=\d+/i.test(raw)) return true;
-  if (raw.includes(`/brd/${boardId}/view.do`)) return true;
+function isListOrSearchUrl(url) {
+  const value = String(url || '').toLowerCase();
+  if (!value) return true;
+  if (value.includes('/list.do')) return true;
+  if (value.includes('/www/rss/')) return true;
   return false;
 }
 
-function isLikelyTitle(title) {
+function isLikelyTitle(title, source = null) {
   const t = norm(title);
   if (isBadTitle(t)) return false;
+  if (UI_TEXT_EXACT.has(t)) return false;
+  if (BOARD_TITLE_EXACT.has(t)) return false;
+  if (source && (t === source.category || t === source.board_id)) return false;
   if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return false;
   if (/^(미리보기|다운받기|첨부파일|새로운게시물)$/.test(t)) return false;
   if (/\.(pdf|hwp|hwpx|xls|xlsx|zip)$/i.test(t)) return false;
+  if (/^(단일|통합|상세)\s*키워드\s*검색$/.test(t)) return false;
   if (t.length < 4 || t.length > 180) return false;
   return true;
+}
+
+function cleanCellText(raw, source) {
+  let t = norm(raw);
+  if (!t) return '';
+  t = t.replace(/\b20\d{2}[.\-/]\d{1,2}[.\-/]\d{1,2}\b/g, ' ');
+  t = t.replace(/20\d{2}\s*년\s*\d{1,2}\s*월\s*\d{1,2}\s*일/g, ' ');
+  t = t.replace(/\b\d{1,8}\b/g, ' ');
+  for (const bad of [...UI_TEXT_EXACT, source?.category || '', source?.board_id || '']) {
+    if (!bad) continue;
+    if (t === bad) return '';
+    t = t.replaceAll(bad, ' ');
+  }
+  t = norm(t);
+  // Avoid storing a cell that merely concatenates board/category labels.
+  if (BOARD_TITLE_EXACT.has(t) || UI_TEXT_EXACT.has(t)) return '';
+  return t;
+}
+
+function postSignalFromAnchor($, a, source, baseUrl) {
+  const $a = $(a);
+  const href = $a.attr('href') || '';
+  const onclick = $a.attr('onclick') || '';
+  const data = Object.entries($a.data() || {}).map(([k, v]) => `${k}=${v}`).join(' ');
+  const raw = `${href} ${onclick} ${data}`;
+  if (looksLikeFileOrUtility(raw)) return null;
+  const seq = extractSeq(raw);
+  if (!isViewHref(href, source.board_id) && !seq) return null;
+  const url = makeViewUrl(source, href, baseUrl, seq);
+  if (!url || isListOrSearchUrl(url)) return null;
+  return { href, onclick, data, raw, seq, url };
+}
+
+function findPostSignalInContainer($, container, source, baseUrl) {
+  const signals = [];
+  $(container).find('a, button').each((idx, el) => {
+    const signal = postSignalFromAnchor($, el, source, baseUrl);
+    if (!signal) return;
+    signals.push({ ...signal, el, idx });
+  });
+  return signals[0] || null;
+}
+
+function pickTitleFromContainer($, container, source, signal = null) {
+  const candidates = [];
+
+  if (signal?.el) {
+    const aText = norm($(signal.el).text());
+    if (isLikelyTitle(aText, source)) candidates.push({ title: aText, score: 100, reason: 'post-anchor' });
+  }
+
+  $(container).find('a').each((idx, a) => {
+    const signalA = postSignalFromAnchor($, a, source, signal?.url || source.url);
+    const title = norm($(a).text());
+    if (!signalA || !isLikelyTitle(title, source)) return;
+    candidates.push({ title, score: 80 + Math.min(title.length, 80) / 10 - idx, reason: 'linked-anchor' });
+  });
+
+  const cellSelectors = 'td, th, p, strong, span, div';
+  $(container).find(cellSelectors).each((idx, el) => {
+    const raw = norm($(el).clone().children('a, button, script, style').remove().end().text());
+    const title = cleanCellText(raw, source);
+    if (!isLikelyTitle(title, source)) return;
+    candidates.push({ title, score: 40 + Math.min(title.length, 100) / 10 - Math.min(idx, 10), reason: 'cell-text' });
+  });
+
+  const direct = cleanCellText($(container).clone().children('script,style').remove().end().text(), source);
+  if (isLikelyTitle(direct, source) && direct.length <= 180) {
+    candidates.push({ title: direct, score: 10, reason: 'container-text' });
+  }
+
+  const unique = [];
+  const seen = new Set();
+  for (const c of candidates.sort((a, b) => b.score - a.score)) {
+    if (seen.has(c.title)) continue;
+    seen.add(c.title);
+    unique.push(c);
+  }
+  return unique[0] || null;
 }
 
 function contextTextForAnchor($, anchor) {
@@ -71,6 +170,7 @@ function contextTextForAnchor($, anchor) {
     $a.closest('article'),
     $a.closest('.list_item'),
     $a.closest('.board-list__item'),
+    $a.closest('.board_list li'),
     $a.parent(),
     $a.parent().parent(),
     $a.parent().parent().parent()
@@ -78,13 +178,6 @@ function contextTextForAnchor($, anchor) {
   for (const c of containers) {
     const text = norm(c.text());
     if (text && text.length > 5) parts.push(text);
-  }
-  let cursor = $a.parent();
-  for (let i = 0; i < 5 && cursor.length; i += 1) {
-    const next = cursor.next();
-    const text = norm(next.text());
-    if (text) parts.push(text);
-    cursor = next;
   }
   return norm([...new Set(parts)].join(' '));
 }
@@ -97,8 +190,15 @@ function pageSignature(rows) {
   return rows.slice(0, 12).map(r => `${r.item_date || ''}:${r.title}:${r.url}`).join('|');
 }
 
-function addRow(pageRows, seen, row) {
-  if (!row || !isLikelyTitle(row.title)) return false;
+function addRow(pageRows, seen, row, source, stats) {
+  if (!row || !isLikelyTitle(row.title, source)) {
+    stats.rejectedBadTitle += 1;
+    return false;
+  }
+  if (!row.url || isListOrSearchUrl(row.url)) {
+    stats.rejectedBadUrl += 1;
+    return false;
+  }
   const key = rowKey(row);
   if (seen.has(key)) return false;
   seen.add(key);
@@ -106,40 +206,20 @@ function addRow(pageRows, seen, row) {
   return true;
 }
 
-function pickTitleAnchorFromContainer($, container) {
-  const candidates = [];
-  $(container).find('a').each((idx, a) => {
-    const title = norm($(a).text());
-    const href = $(a).attr('href') || '';
-    const onclick = $(a).attr('onclick') || '';
-    const data = Object.entries($(a).data() || {}).map(([k, v]) => `${k}=${v}`).join(' ');
-    const raw = `${href} ${onclick} ${data}`;
-    if (!isLikelyTitle(title)) return;
-    if (looksLikeFileOrUtility(raw) || looksLikeFileOrUtility(title)) return;
-    const score = (String(href).toLowerCase().includes('view.do') ? 20 : 0)
-      + (extractSeq(raw) ? 20 : 0)
-      + (idx < 2 ? 5 : 0)
-      + Math.min(title.length, 60) / 60;
-    candidates.push({ a, title, href, onclick, data, score });
-  });
-  return candidates.sort((a, b) => b.score - a.score)[0] || null;
-}
-
 function addRowsFromAnchors($, source, baseUrl, startDate, endDate, pageRows, seen, stats) {
   $('a').each((_, a) => {
     stats.anchorTotal += 1;
-    const href = $(a).attr('href') || '';
-    const onclick = $(a).attr('onclick') || '';
-    const data = Object.entries($(a).data() || {}).map(([k, v]) => `${k}=${v}`).join(' ');
-    const seq = extractSeq(`${href} ${onclick} ${data}`);
-    if (!isViewHref(href, source.board_id) && !seq) return;
+    const signal = postSignalFromAnchor($, a, source, baseUrl);
+    if (!signal) return;
     const title = norm($(a).text());
-    if (!isLikelyTitle(title)) return;
+    if (!isLikelyTitle(title, source)) {
+      stats.rejectedBadTitle += 1;
+      return;
+    }
     const context = contextTextForAnchor($, a);
     const dates = parseAllDates(context);
     const itemDate = dates.at(-1) || '';
     if (itemDate) stats.dateTokens += 1;
-    const normalizedUrl = makeViewUrl(source, href, baseUrl, seq);
     stats.viewLinkCandidates += 1;
     stats.checked += 1;
     const row = {
@@ -148,15 +228,15 @@ function addRowsFromAnchors($, source, baseUrl, startDate, endDate, pageRows, se
       board_id: source.board_id,
       item_date: itemDate,
       title,
-      url: normalizedUrl,
+      url: signal.url,
       source_type: 'html-anchor'
     };
     if (itemDate && dateInRange(itemDate, startDate, endDate)) {
       stats.inRange += 1;
-      addRow(pageRows, seen, row);
+      addRow(pageRows, seen, row, source, stats);
     } else if (!itemDate) {
       stats.noDateCandidates += 1;
-      addRow(pageRows, seen, row);
+      addRow(pageRows, seen, row, source, stats);
     } else {
       stats.outOfRange += 1;
     }
@@ -164,17 +244,19 @@ function addRowsFromAnchors($, source, baseUrl, startDate, endDate, pageRows, se
 }
 
 function addRowsFromContainers($, source, baseUrl, startDate, endDate, pageRows, seen, stats) {
-  const selectors = 'li, tr, .list_item, .board-list__item, article';
+  const selectors = 'li, tr, .list_item, .board-list__item, article, .board_list li, .bbs-list li';
   $(selectors).each((_, container) => {
     const text = norm($(container).text());
     if (!text || text.length < 20) return;
+    const signal = findPostSignalInContainer($, container, source, baseUrl);
+    if (!signal) return; // v1.6: never infer a post from date-only/search blocks.
     const dates = parseAllDates(text);
-    if (!dates.length) return;
-    const itemDate = dates.at(-1);
-    const chosen = pickTitleAnchorFromContainer($, container);
-    if (!chosen) return;
-    const seq = extractSeq(`${chosen.href} ${chosen.onclick} ${chosen.data}`);
-    const normalizedUrl = makeViewUrl(source, chosen.href, baseUrl, seq);
+    const itemDate = dates.at(-1) || '';
+    const chosen = pickTitleFromContainer($, container, source, signal);
+    if (!chosen) {
+      stats.rejectedBadTitle += 1;
+      return;
+    }
     stats.textBlockCandidates += 1;
     stats.checked += 1;
     const row = {
@@ -183,12 +265,15 @@ function addRowsFromContainers($, source, baseUrl, startDate, endDate, pageRows,
       board_id: source.board_id,
       item_date: itemDate,
       title: chosen.title,
-      url: normalizedUrl,
-      source_type: 'html-block'
+      url: signal.url,
+      source_type: `html-block:${chosen.reason}`
     };
     if (itemDate && dateInRange(itemDate, startDate, endDate)) {
       stats.inRange += 1;
-      addRow(pageRows, seen, row);
+      addRow(pageRows, seen, row, source, stats);
+    } else if (!itemDate) {
+      stats.noDateCandidates += 1;
+      addRow(pageRows, seen, row, source, stats);
     } else {
       stats.outOfRange += 1;
     }
@@ -209,6 +294,8 @@ export async function collectHtmlSource(source, startDate, endDate, options = {}
     viewLinkCandidates: 0,
     textBlockCandidates: 0,
     noDateCandidates: 0,
+    rejectedBadTitle: 0,
+    rejectedBadUrl: 0,
     dateTokens: 0,
     bodyLength: 0,
     lastStatus: null,
@@ -257,6 +344,8 @@ export async function collectHtmlSource(source, startDate, endDate, options = {}
         anchorTotalBefore: stats.anchorTotal,
         checkedBefore: stats.checked,
         inRangeBefore: stats.inRange,
+        rejectedBadTitleBefore: stats.rejectedBadTitle,
+        rejectedBadUrlBefore: stats.rejectedBadUrl,
         sampleTitles: []
       };
       const pageRows = [];
@@ -272,6 +361,8 @@ export async function collectHtmlSource(source, startDate, endDate, options = {}
       pageDiag.anchorTotal = stats.anchorTotal - pageDiag.anchorTotalBefore;
       pageDiag.checked = stats.checked - pageDiag.checkedBefore;
       pageDiag.inRange = stats.inRange - pageDiag.inRangeBefore;
+      pageDiag.rejectedBadTitle = stats.rejectedBadTitle - pageDiag.rejectedBadTitleBefore;
+      pageDiag.rejectedBadUrl = stats.rejectedBadUrl - pageDiag.rejectedBadUrlBefore;
       pageDiag.rows = pageRows.length;
       pageDiag.dateTokensTotal = stats.dateTokens;
       stats.pageDiagnostics.push(pageDiag);

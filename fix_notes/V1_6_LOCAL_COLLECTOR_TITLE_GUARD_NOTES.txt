@@ -1,0 +1,18 @@
+# v1.6 Local Collector Title Guard
+
+## 목적
+v1.5 로컬수집기가 식약처 페이지의 검색 UI/게시판명/목록 URL을 실제 게시물 제목으로 저장하는 문제를 차단합니다.
+
+## 주요 변경
+- HTML 후보 추출 시 반드시 상세게시물 신호(view.do 또는 seq 계열)를 가진 항목만 후보로 인정합니다.
+- '단일 키워드 검색', '법, 시행령, 시행규칙' 등 UI/게시판명 문구를 제목 후보에서 제외합니다.
+- 목록 URL(list.do)은 저장 대상에서 제외합니다.
+- 컨테이너 fallback 파서는 날짜만 보고 추정하지 않고, 같은 행/블록 안에 게시물 상세 신호가 있을 때만 동작합니다.
+- 로컬 수집기의 최종 저장 전 품질필터를 추가하여 잘못된 제목/URL은 Supabase 저장 전에 제외합니다.
+- 이미 저장된 오인식 자료 확인/삭제용 SQL을 mfds_collector/cleanup_bad_titles.sql에 추가했습니다.
+
+## 확인 방법
+1. Supabase SQL Editor에서 cleanup_bad_titles.sql의 SELECT 부분으로 잘못 들어간 자료를 확인합니다.
+2. 확인 후 DELETE 주석을 해제하여 정리합니다.
+3. mfds_collector/run_collect_mfds.bat 실행 후 로그의 '품질필터 제외'와 신규/중복 건수를 확인합니다.
+4. Render 대시보드에서 조회 버튼을 눌러 최신 제목이 정상 표시되는지 확인합니다.

@@ -62,3 +62,18 @@ mfds_collector\logs\last_collect_summary.json
 ## 5. 대시보드 반영
 
 수집이 완료되면 Render 대시보드는 같은 Supabase를 조회하므로 URL 접속자 모두 최신 저장 데이터를 볼 수 있습니다. 다른 사용자는 Supabase 계정이나 수집기가 필요 없습니다.
+
+## 6. v1.6 제목 오인식 방지
+
+v1.6부터 검색 UI/게시판명/목록 URL은 게시물 제목으로 저장하지 않도록 품질필터를 추가했습니다.
+수집 로그에 아래 문구가 나오면 오인식 후보를 Supabase 저장 전에 제외한 것입니다.
+
+```
+품질필터 제외: N건
+```
+
+이미 v1.5에서 잘못 들어간 `단일 키워드 검색`, `법, 시행령, 시행규칙` 등의 자료는 아래 파일로 먼저 SELECT 확인 후 삭제하세요.
+
+```
+mfds_collector\cleanup_bad_titles.sql
+```
