@@ -1,2 +1,3 @@
-This package is Node/React/Express for Render. No Python or Streamlit files are included.
-Version: v1.4-node-render-mfds-network-diagnostic
+This package is Node/React/Express for Render.
+No Python, no Streamlit, no requirements.txt, no runtime.txt.
+V1.5 separates collection from Render: use mfds_collector on a local Windows PC to collect MFDS data into Supabase.

@@ -209,59 +209,14 @@ function App() {
   }
 
   async function collect(mode) {
-    setCollecting(true);
+    setCollecting(false);
     setCollectJob(null);
     setError('');
-    setMessage('');
-    try {
-      const range = periodDatesForClient(filters.period, filters.startDate, filters.endDate);
-      const started = await apiPost('/api/collect/start', { mode, ...range });
-      setCollectJob(started);
-      setMessage(`${mode === 'fast' ? '빠른수집' : '기간수집'} 작업을 시작했습니다. 작업번호 ${started.jobId}`);
-
-      let lastJob = started;
-      const maxPolls = mode === 'fast' ? 180 : 360; // 2초 간격: 빠른수집 최대 6분, 기간수집 최대 12분
-      for (let i = 0; i < maxPolls; i += 1) {
-        await sleep(2000);
-        const job = await apiGet(`/api/collect/status/${started.jobId}?t=${Date.now()}`);
-        lastJob = job;
-        setCollectJob(job);
-        if (job.status === 'done') setCollecting(false);
-        if (job.status === 'running' || job.status === 'queued') {
-          setMessage(renderJobProgress(job));
-        }
-        if (job.status === 'done') {
-          const data = job.result || {};
-          const baseMsg = `${mode === 'fast' ? '빠른수집' : '기간수집'} 결과: 신규 ${numberFmt(data.inserted)}건, 중복 ${numberFmt(data.skipped)}건, 확인 ${numberFmt(data.checked)}건, RSS 확인 ${numberFmt(data.rssChecked)}건, HTML 확인 ${numberFmt(data.htmlChecked)}건, 상세검증 ${numberFmt(data.detailChecked)}건${data.latestItemDate ? `, 수집 확인 최신일 ${data.latestItemDate}` : ''}${data.detailLimitReached ? `, 상세검증 제한 ${numberFmt(data.detailLimit)}건 도달` : ''}`;
-          const diag = pickDiagnosticSummary(data);
-          if (data.warning) {
-            const firstError = data.errors?.length ? ` / 첫 오류: ${data.errors[0]}` : '';
-            setMessage(baseMsg + diag);
-            setError(`수집 주의: 게시물 후보를 인식하지 못했거나 기간 내 저장 후보가 없습니다.${firstError}`);
-          } else {
-            setMessage(baseMsg + diag);
-            setError('');
-          }
-          await loadOptions();
-          await loadData(1, 1, filters);
-          return;
-        }
-        if (job.status === 'failed') {
-          throw new Error(job.error || '수집 작업이 실패했습니다.');
-        }
-      }
-      throw new Error(`수집 작업이 제한시간 내 완료되지 않았습니다. 마지막 상태: ${renderJobProgress(lastJob)}`);
-    } catch (err) {
-      const msg = String(err.message || err);
-      if (msg.includes('<!DOCTYPE html') || msg.includes('<title>502</title>')) {
-        setError('수집 실패: Render/API가 HTML 오류 페이지를 반환했습니다. 수집 서버 응답 문제로 보며, Render Logs를 확인해야 합니다.');
-      } else {
-        setError(`수집 실패: ${msg}`);
-      }
-    } finally {
-      setCollecting(false);
-    }
+    const label = mode === 'fast' ? '빠른수집' : '기간수집';
+    setMessage(`${label}은 Render 서버에서 직접 실행하지 않습니다. 식약처 사이트가 Render에서 timeout 되므로, 선생님 PC의 mfds_collector\\run_collect_mfds.bat 또는 작업 스케줄러로 수집한 뒤 조회 버튼을 눌러 Supabase 저장 데이터를 확인하세요.`);
+    await loadData(1, 1, filters);
   }
+
 
   const headerStats = stats?.stats || { today: 0, recent7: 0, recent14: 0, total: 0 };
   const periodLabel = PERIODS.find(p => p.value === filters.period)?.label || '최근 7일';

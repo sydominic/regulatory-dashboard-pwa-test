@@ -1,64 +1,55 @@
-# MFDS Regulatory PWA V1.1
+# MFDS Regulatory Update Dashboard v1.5
 
-Node/React/Vite + Express + Render version. Python/Streamlit 파일은 사용하지 않습니다.
+Render / Node / React / Express 기반 대시보드입니다. Python/Streamlit 파일은 없습니다.
 
-## Structure
+## v1.5 핵심 구조
 
-```text
-client/
-server/
-server/src/collectors/
-package.json
-render.yaml
-render-build.sh
-supabase_schema.sql
+v1.4 진단 결과 Render 서버에서 `mfds.go.kr` 원문 HTML/RSS 요청이 timeout 되는 것으로 확인되어, 수집과 조회를 분리했습니다.
+
+```
+선생님 PC 로컬 수집기 → Supabase 저장/누적 → Render 대시보드 조회
 ```
 
-## V1.1 핵심 변경
+다른 사용자는 Render URL만 접속하면 Supabase에 저장된 게시물을 볼 수 있습니다. Supabase 계정이나 로컬 수집기는 필요 없습니다.
 
-- `/api/collect` 장시간 동기 실행을 폐기하고 비동기 Job 방식으로 변경했습니다.
-- 빠른수집/기간수집 클릭 시 `/api/collect/start`가 즉시 `jobId`를 반환합니다.
-- 화면은 `/api/collect/status/:jobId`를 2초마다 조회하여 진행상태를 표시합니다.
-- RSS 확인 수, HTML 확인 수, 상세검증 수, 후보 수, 신규/중복 수를 단계별로 표시합니다.
-- Render 502 HTML을 식약처 수집 실패처럼 표시하지 않도록 분리했습니다.
-- 빠른수집은 HTML 1페이지, 상세검증 최대 45건으로 제한하여 Render 장시간 대기를 줄였습니다.
-- 기간수집은 기간에 따라 HTML 페이지 수와 상세검증 수를 제한합니다.
-- 진단 API를 추가했습니다.
+## Render 역할
 
-## Health check
+- 대시보드 표시
+- Supabase 저장 데이터 조회
+- 검색/기간/카테고리 필터
+- 통계/목록 표시
 
-```text
+Render에서 식약처 직접수집은 수행하지 않습니다.
+
+## 로컬 수집기
+
+`mfds_collector/` 폴더를 사용합니다.
+
+1. `mfds_collector/.env.example`을 `mfds_collector/.env`로 복사
+2. `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` 입력
+3. `mfds_collector/run_collect_mfds.bat` 실행
+4. 수집 완료 후 Render 대시보드에서 조회
+
+자동 실행은 Windows 작업 스케줄러에 `mfds_collector/run_collect_mfds_scheduled.bat`를 등록하세요.
+
+## Render 환경변수
+
+```
+NODE_VERSION=20.11.1
+SUPABASE_URL=https://xxxxxxxxxxxxxxxxxxxx.supabase.co
+SUPABASE_SERVICE_KEY=service_role_key
+AUTO_COLLECT_ON_LOAD=false
+ALLOW_LOCAL_POSTGRES=false
+```
+
+## 확인
+
+```
 /api/health
 ```
 
-Expected API version:
+정상 버전값:
 
-```text
-v1.4-node-render-mfds-network-diagnostic
 ```
-
-## Diagnostic API
-
-```text
-/api/diag/env
-/api/diag/mfds/rss?board=m_1060
-/api/diag/mfds/html?board=m_1060&maxPages=1
+v1.5-node-render-dashboard-local-collector
 ```
-
-## Collect API
-
-```text
-POST /api/collect/start
-GET  /api/collect/status/:jobId
-GET  /api/collect/result/:jobId
-```
-
-`POST /api/collect`는 호환용으로 남겨두되, 내부적으로는 작업을 시작하고 즉시 반환합니다.
-
-
-## v1.4 네트워크 진단
-
-- Render에서 식약처 원문을 못 받는 문제를 확인하기 위해 /api/diag/net, /api/diag/mfds/connect 를 추가했습니다.
-- Node fetch 실패 시 native http/https 및 IPv4 fallback을 시도합니다.
-- /api/diag/mfds/raw, /api/diag/mfds/rss-raw 에 timeout, transport 파라미터를 추가했습니다.
-- 수집 완료 후에도 '수집 진행 중' 문구가 남는 문제를 완화했습니다.

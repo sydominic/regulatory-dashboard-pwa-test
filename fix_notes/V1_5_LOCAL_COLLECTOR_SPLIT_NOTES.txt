@@ -1,0 +1,25 @@
+V1.5 LOCAL COLLECTOR SPLIT NOTES
+
+배경
+- v1.4 네트워크 진단에서 Render 서버의 일반 외부 접속(example.com)은 정상.
+- mfds.go.kr root, board list, RSS는 fetch/node/node4 모두 timeout 또는 fetch failed.
+- 따라서 Render 내부 수집 로직/HTML 파서 문제가 아니라 Render 실행환경에서 식약처 사이트에 직접 접근하지 못하는 문제로 판단.
+
+변경사항
+1. Render 대시보드는 Supabase 조회 전용으로 정리.
+2. 빠른수집/기간수집 버튼은 Render 직접 수집을 실행하지 않고 로컬 수집기 사용 안내를 표시.
+3. mfds_collector/ 폴더 추가.
+4. 로컬 Node 수집기 collect_mfds_to_supabase.js 추가.
+5. run_collect_mfds.bat, run_collect_mfds_period_14days.bat, run_collect_mfds_scheduled.bat 추가.
+6. Windows 작업 스케줄러 등록 가이드 추가.
+7. 수집 로그 및 last_collect_summary.json 생성.
+
+운영 구조
+- 선생님 PC 또는 식약처 접속 가능한 회사망 PC에서 로컬 수집 실행.
+- 수집 결과는 선생님 Supabase DB에 저장/누적.
+- Render URL 접속자는 Supabase 저장 데이터를 조회.
+
+주의
+- mfds_collector/.env는 GitHub에 업로드하지 말 것.
+- SUPABASE_SERVICE_KEY는 service_role key 사용.
+- PC가 꺼져 있으면 작업 스케줄러 수집은 실행되지 않음.

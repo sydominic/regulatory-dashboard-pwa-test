@@ -1,28 +1,24 @@
-MFDS Regulatory PWA v18 GitHub 업로드 안내
+GitHub 업로드 안내
 
-업로드 위치:
-- GitHub repository 루트
+1. 이 ZIP 파일을 먼저 압축 해제합니다.
+2. ZIP 파일 자체를 GitHub에 올리지 마세요.
+3. 압축을 푼 내부 파일/폴더를 repo 최상위에 업로드합니다.
 
-업로드해야 하는 주요 항목:
+최상위에 보여야 하는 항목:
 - client/
 - server/
-- data/
-- docs/
-- scripts/
-- fix_notes/
+- mfds_collector/
 - package.json
-- render-build.sh
 - render.yaml
-- .env.example
-- .env.render.example
+- render-build.sh
+- supabase_schema.sql
 
-업로드 금지:
+업로드하면 안 되는 항목:
+- mfds_collector/.env
 - .env
-- node_modules/
-- client/node_modules/
-- server/node_modules/
-- client/dist/
-- *.log
+- app.py
+- requirements.txt
+- runtime.txt
+- .streamlit/
 
-권장 커밋 메시지:
-chore: prepare MFDS regulatory PWA for Render deployment
+v1.5는 Render 직접 수집이 아니라 로컬 수집기 → Supabase → Render 조회 구조입니다.

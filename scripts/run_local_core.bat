@@ -93,7 +93,7 @@ call :wait_url "%API_HEALTH%" "API server" "%SERVER_LOG%"
 if errorlevel 1 exit /b 1
 
 call :log "[7.5/9] Verify API version"
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$r=Invoke-RestMethod -Uri '%API_HEALTH%' -TimeoutSec 5; if ($r.apiVersion -ne 'v1.4-node-render-mfds-network-diagnostic') { Write-Output ('ERROR: expected v1.4-node-render-mfds-network-diagnostic but got ' + $r.apiVersion); exit 1 } else { Write-Output ('API version OK: ' + $r.apiVersion); exit 0 }" >> "%RUN_LOG%" 2>&1
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$r=Invoke-RestMethod -Uri '%API_HEALTH%' -TimeoutSec 5; if ($r.apiVersion -ne 'v1.5-node-render-dashboard-local-collector') { Write-Output ('ERROR: expected v1.5-node-render-dashboard-local-collector but got ' + $r.apiVersion); exit 1 } else { Write-Output ('API version OK: ' + $r.apiVersion); exit 0 }" >> "%RUN_LOG%" 2>&1
 if errorlevel 1 (
   call :log "ERROR: API version mismatch. Old server may still be running. See run_local.log."
   exit /b 1
